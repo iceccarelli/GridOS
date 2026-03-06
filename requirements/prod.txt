@@ -1,0 +1,5 @@
+# GridOS — Production dependencies
+-r base.txt
+gunicorn>=21.1.0
+prometheus-client>=0.20.0
+sentry-sdk[fastapi]>=1.40.0

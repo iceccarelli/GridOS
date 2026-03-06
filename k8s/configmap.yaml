@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gridos-config
+  namespace: gridos
+  labels:
+    app: gridos
+data:
+  GRIDOS_ENV: "production"
+  GRIDOS_LOG_LEVEL: "INFO"
+  GRIDOS_STORAGE_BACKEND: "influxdb"
+  INFLUXDB_URL: "http://influxdb-svc.gridos.svc.cluster.local:8086"
+  INFLUXDB_ORG: "gridos"
+  INFLUXDB_BUCKET: "telemetry"
+  GRIDOS_CORS_ORIGINS: '["*"]'
+  GRIDOS_OPT_TIME_STEP_MINUTES: "15"
+  GRIDOS_ML_MODEL_DIR: "/app/models_cache"

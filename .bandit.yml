@@ -1,0 +1,4 @@
+skips:
+  - B104  # Binding to 0.0.0.0 is intentional for container deployments
+  - B608  # SQL construction uses parameterised queries (safe)
+  - B614  # PyTorch load uses weights_only=True (safe)

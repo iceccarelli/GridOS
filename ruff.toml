@@ -1,0 +1,10 @@
+[lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[lint.isort]
+known-first-party = ["gridos"]
+
+[format]
+quote-style = "double"
+indent-style = "space"

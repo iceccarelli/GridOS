@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: gridos-api-svc
+  namespace: gridos
+  labels:
+    app: gridos
+    component: api
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 8000
+      protocol: TCP
+      name: http
+  selector:
+    app: gridos
+    component: api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gridos-api-lb
+  namespace: gridos
+  labels:
+    app: gridos
+    component: api
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 8000
+      protocol: TCP
+      name: http
+  selector:
+    app: gridos
+    component: api

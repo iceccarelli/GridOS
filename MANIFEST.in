@@ -1,0 +1,16 @@
+include LICENSE
+include README.md
+include CHANGELOG.md
+include CONTRIBUTING.md
+include pyproject.toml
+include requirements/*.txt
+
+recursive-include src/gridos *.py *.pyi
+recursive-include data *.csv *.json
+
+prune tests
+prune notebooks
+prune k8s
+prune docker
+prune scripts
+prune .github

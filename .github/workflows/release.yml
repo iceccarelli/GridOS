@@ -1,0 +1,62 @@
+name: GridOS Release
+
+# Triggered when a version tag is pushed (e.g., v0.1.0)
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Create GitHub Release with auto-generated notes ────────────
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade pip build
+
+      - name: Build distribution packages
+        run: python -m build
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            ## GridOS ${{ github.ref_name }}
+
+            ### Installation
+
+            **Via pip (PyPI):**
+            ```bash
+            pip install gridos
+            ```
+
+            **Via Docker:**
+            ```bash
+            docker pull ghcr.io/iceccarelli/gridos:latest
+            docker run -p 8000:8000 ghcr.io/iceccarelli/gridos:latest
+            ```
+
+            **From source:**
+            ```bash
+            git clone https://github.com/iceccarelli/GridOS.git
+            cd GridOS
+            pip install -e ".[dev]"
+            ```
+
+            ---
+            *See [CHANGELOG.md](https://github.com/iceccarelli/GridOS/blob/main/CHANGELOG.md) for full details.*
