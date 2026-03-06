@@ -1,6 +1,5 @@
 name: Publish to PyPI
 
-# Triggers on GitHub Release creation or manual dispatch
 on:
   release:
     types: [published]
@@ -8,10 +7,9 @@ on:
 
 permissions:
   contents: read
-  id-token: write  # Required for PyPI Trusted Publisher (OIDC)
+  id-token: write
 
 jobs:
-  # ── Step 1: Run full test suite before publishing ──────────────
   test:
     name: Pre-Publish Tests
     runs-on: ubuntu-latest
@@ -38,7 +36,6 @@ jobs:
       - name: Run type check
         run: mypy src/gridos/ --ignore-missing-imports
 
-  # ── Step 2: Build the distribution packages ────────────────────
   build:
     name: Build Distribution
     runs-on: ubuntu-latest
@@ -68,32 +65,10 @@ jobs:
           name: python-package-distributions
           path: dist/
 
-  # ── Step 3: Publish to TestPyPI first (safety check) ───────────
-  publish-testpypi:
-    name: Publish to TestPyPI
-    runs-on: ubuntu-latest
-    needs: build
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/gridos
-    steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: python-package-distributions
-          path: dist/
-
-      - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-          skip-existing: true
-
-  # ── Step 4: Publish to production PyPI ─────────────────────────
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: publish-testpypi
+    needs: build
     environment:
       name: pypi
       url: https://pypi.org/p/gridos
