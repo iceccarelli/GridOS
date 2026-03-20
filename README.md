@@ -34,13 +34,10 @@
 title: GridOS — Architecture Overview
 ---
 flowchart TB
-    %% Title (for visual impact in rendered Markdown)
     Title["<b>GridOS</b> — Open Energy Operating System<br/><span style='font-size:13px'>Vendor-neutral • Standards-based • Real-time DER Middleware</span><br/><i>Telemetry Ingestion • Digital Twin • ML Forecasting • MILP Optimization</i>"]
 
-    %% Physical Layer (high-voltage engineering view)
     DERs["<b>🌍 Distributed Energy Resources (DERs)</b><br/>Solar Inverters • Battery Energy Storage Systems (BESS)<br/>EV Chargers • Smart Controllable Loads"]
 
-    %% Layer 1: Communication (protocol adapters)
     subgraph L1 ["<b>1. Multi-Protocol Communication Layer</b><br/>🔌 Edge-ready adapters"]
         direction TB
         MOD["Modbus TCP/RTU"]
@@ -50,29 +47,22 @@ flowchart TB
         OPC["OPC-UA"]
     end
 
-    %% Layer 2: Semantic normalization (CIM for interoperability)
     L2["<b>2. Semantic Normalization Layer</b><br/>📋 Common Information Model (CIM)<br/>Pydantic models • IEC 61968 + IEC 61850 compliant"]
 
-    %% Layer 3: Core platform (the heart of the system)
     subgraph L3 ["<b>3. Core Intelligence Platform</b>"]
         direction TB
-
         subgraph Storage ["Time-Series Storage"]
             TS["InfluxDB 2.x • TimescaleDB<br/>+ SQLite Edge Store-and-Forward Cache"]
         end
-
         Twin["<b>Digital Twin Engine</b><br/>Physics-based component models<br/>Bus • Line • Transformer • PV • Battery • EV Charger<br/>Quasi-static Power-Flow Simulation"]
-
         subgraph Intelligence ["AI & Optimization Engine"]
             ML["Machine-Learning Forecasting<br/>LSTM (load & solar) + Isolation Forest anomaly detection"]
             Opt["<b>Mixed-Integer Linear Programming (MILP)</b><br/>Optimal battery dispatch & demand response (PuLP)"]
         end
     end
 
-    %% Layer 4: API & real-time services
     L4["<b>4. API & Real-Time Services Layer</b><br/>🚀 FastAPI + WebSocket<br/>REST endpoints + Live Telemetry Streaming<br/>Security: API Keys + JWT authentication"]
 
-    %% Users & applications (end-to-end value)
     subgraph Users ["<b>5. End Users & Applications</b>"]
         direction TB
         VPP["Virtual Power Plants & Aggregators"]
@@ -81,27 +71,20 @@ flowchart TB
         Dash["Grafana Dashboards + Custom Analytics UIs"]
     end
 
-    %% Cross-cutting concerns (deployment, edge, security)
     Edge["Edge Computing Mode<br/>Store-and-Forward for intermittent connectivity"]
     Security["Security Layer<br/>API Keys + JWT"]
     Deploy["Cloud-Native Deployment<br/>Docker • Kubernetes • GitHub Actions CI/CD • PyPI Package"]
 
-    %% Data & control flows (the professional integration path)
     DERs --> L1
     L1 --> L2
     L2 --> L3
     L3 --> L4
     L4 --> Users
-
-    %% Bidirectional control loop (critical for power engineers)
     Users -.->|"Optimal Setpoints & Dispatch Commands"| L4
-
-    %% Cross-cutting links
     L3 --> Edge
     L4 --> Security
     L4 --> Deploy
 
-    %% Professional styling (clean academic/industrial look)
     classDef title fill:#1e40af,color:#fff,stroke:#1e40af,stroke-width:4px,font-size:18px
     classDef physical fill:#fef3c7,stroke:#d97706,stroke-width:3px,rx:15,ry:15
     classDef layer fill:#e0f2fe,stroke:#1e40af,stroke-width:3px,rx:18,ry:18
@@ -121,11 +104,11 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    A[Telemetry Ingestion<br/>Multi-Protocol Adapters] --> B[CIM Normalization<br/>Pydantic Models]
-    B --> C[Digital Twin State Update<br/>Physics-based Power Flow]
-    C --> D[Forecasting & Analytics<br/>LSTM + Isolation Forest]
-    D --> E[Optimization Solver<br/>MILP (PuLP)]
-    E --> F[Optimal Dispatch Commands<br/>Battery / DER Control]
+    A["Telemetry Ingestion<br/>Multi-Protocol Adapters"] --> B["CIM Normalization<br/>Pydantic Models"]
+    B --> C["Digital Twin State Update<br/>Physics-based Power Flow"]
+    C --> D["Forecasting & Analytics<br/>LSTM + Isolation Forest"]
+    D --> E["Optimization Solver<br/>MILP &#40;PuLP&#41;"]
+    E --> F["Optimal Dispatch Commands<br/>Battery / DER Control"]
     F -.-> A
     style E fill:#4f46e5,color:#fff,stroke:#c4b5fd,stroke-width:3px
 ```
