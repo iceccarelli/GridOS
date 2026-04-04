@@ -269,4 +269,3 @@ GridOS is released under the [MIT License](LICENSE).
 
 ## Acknowledgements
 GridOS builds on the shoulders of outstanding open-source projects including FastAPI, Pydantic, PuLP, scikit-learn, InfluxDB, TimescaleDB, and many others. We are grateful to the energy systems research community for the standards and models that inform this work.
-```
