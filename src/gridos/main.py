@@ -1,9 +1,9 @@
-"""
-GridOS FastAPI application entry point.
+"""GridOS FastAPI application entry point for the reduced launch path.
 
-This reduced launch version keeps the public runtime surface intentionally small:
-root metadata, health checks, interactive API docs, telemetry ingestion, telemetry
-queries, and an optional WebSocket endpoint.
+The supported default surface is intentionally small and truthful:
+root metadata, health checks, interactive documentation, device registration,
+telemetry ingestion and query, control command acceptance, and optional
+WebSocket telemetry streaming.
 """
 
 from __future__ import annotations
@@ -18,29 +18,35 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from gridos import __version__
 from gridos.api.dependencies import close_storage
-from gridos.api.routes import telemetry
+from gridos.api.routes import control, devices, telemetry
 from gridos.api.websocket_manager import ws_manager
 from gridos.config import settings
 
 logger = logging.getLogger("gridos")
 
 
-def _using_inmemory_storage() -> bool:
-    return os.getenv("GRIDOS_USE_INMEMORY_STORAGE", "true").lower() in {"1", "true", "yes", "on"}
+SUPPORTED_ROUTE_GROUPS = {
+    "devices": "/api/v1/devices",
+    "telemetry": "/api/v1/telemetry",
+    "control": "/api/v1/control",
+    "docs": "/docs",
+    "health": "/health",
+    "websocket": "/ws/telemetry",
+}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan hooks."""
+    """Configure logging and close shared resources on shutdown."""
     logging.basicConfig(
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
         format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
     )
     logger.info(
-        "GridOS v%s starting (env=%s, in_memory_storage=%s)",
+        "GridOS v%s starting (env=%s, storage=%s)",
         __version__,
         settings.env.value,
-        _using_inmemory_storage(),
+        settings.storage_backend.value,
     )
     yield
     await close_storage()
@@ -50,8 +56,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="GridOS",
     description=(
-        "Lightweight API for DER telemetry ingestion and grid-oriented experimentation. "
-        "The default launch path favors a small local setup over broad platform claims."
+        "Lightweight API for device registration, telemetry ingestion, and "
+        "basic control workflows in a local-first GridOS deployment."
     ),
     version=__version__,
     lifespan=lifespan,
@@ -68,7 +74,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(devices.router, prefix="/api/v1")
 app.include_router(telemetry.router, prefix="/api/v1")
+app.include_router(control.router, prefix="/api/v1")
 
 
 @app.websocket("/ws/telemetry")
@@ -91,23 +99,36 @@ async def websocket_telemetry(
 
 @app.get("/health", tags=["System"])
 async def health_check() -> dict[str, object]:
-    """Return service health status."""
+    """Return service health and supported runtime surface."""
     return {
         "status": "healthy",
         "version": __version__,
         "environment": settings.env.value,
-        "storage_mode": "inmemory" if _using_inmemory_storage() else settings.storage_backend.value,
+        "storage_backend": settings.storage_backend.value,
         "websocket_connections": ws_manager.active_connections,
+        "supported_routes": SUPPORTED_ROUTE_GROUPS,
     }
 
 
 @app.get("/", tags=["System"])
-async def root() -> dict[str, str]:
-    """Root endpoint with API information."""
+async def root() -> dict[str, object]:
+    """Return public metadata for the reduced launch version."""
     return {
         "name": "GridOS",
         "version": __version__,
-        "docs": "/docs",
-        "health": "/health",
-        "telemetry": "/api/v1/telemetry",
+        "mode": "reduced_launch",
+        "description": "Local-first DER telemetry and basic control API.",
+        "supported_features": [
+            "device registration",
+            "telemetry ingestion",
+            "telemetry history and latest lookup",
+            "basic control command acceptance",
+            "optional telemetry websocket",
+        ],
+        "unsupported_by_default": [
+            "forecasting",
+            "optimization",
+            "protocol-specific adapter automation",
+        ],
+        "routes": SUPPORTED_ROUTE_GROUPS,
     }
