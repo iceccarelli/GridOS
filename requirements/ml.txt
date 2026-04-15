@@ -1,4 +1,4 @@
-# GridOS machine learning and optimization extras
+# GridOS — optional future analytical dependencies
 -r base.txt
 numpy>=1.26.0,<3.0.0
 pandas>=2.2.0,<3.0.0
