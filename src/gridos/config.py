@@ -1,111 +1,59 @@
-"""
-GridOS configuration management.
-
-This reduced launch version keeps the configuration surface intentionally small so
-that the default developer path works without external infrastructure. Optional
-persistent backends remain available, but they are not required for first use.
-"""
+"""Control command API routes for the reduced GridOS launch path."""
 
 from __future__ import annotations
 
-from enum import Enum
+import logging
+from typing import Any
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from fastapi import APIRouter, HTTPException
 
+from gridos.api.dependencies import get_adapter_registry, get_device_registry
+from gridos.models.common import ControlCommand
 
-class Environment(str, Enum):
-    """Supported deployment environments."""
-
-    DEVELOPMENT = "development"
-    STAGING = "staging"
-    PRODUCTION = "production"
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/control", tags=["Control"])
 
 
-class StorageBackend(str, Enum):
-    """Optional persistent storage backends."""
+@router.post(
+    "/{device_id}",
+    response_model=dict[str, Any],
+    summary="Send a control command to a device",
+)
+async def send_command(device_id: str, command: ControlCommand) -> dict[str, Any]:
+    """Validate and accept a control command for a registered device."""
+    registry = get_device_registry()
+    if device_id not in registry:
+        raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
 
-    INFLUXDB = "influxdb"
-    TIMESCALEDB = "timescaledb"
+    if command.device_id != device_id:
+        command.device_id = device_id
 
+    adapters = get_adapter_registry()
+    adapter = adapters.get(device_id)
 
-class Settings(BaseSettings):
-    """Central configuration for the reduced GridOS launch path.
+    if adapter is None:
+        logger.warning("No adapter registered for device %s", device_id)
+        return {
+            "status": "accepted_not_dispatched",
+            "device_id": device_id,
+            "command_id": str(command.command_id),
+            "mode": command.mode.value,
+            "message": "No live adapter is attached, so the command was accepted but not dispatched.",
+        }
 
-    Values are read from environment variables prefixed with ``GRIDOS_`` and from
-    a local ``.env`` file when present. The default mode is intentionally local
-    and lightweight.
-    """
+    try:
+        success = await adapter.write_command(command)
+    except Exception as exc:
+        logger.error("Command dispatch error for %s: %s", device_id, exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Command dispatch failed: {exc}",
+        ) from exc
 
-    model_config = SettingsConfigDict(
-        env_prefix="GRIDOS_",
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
-    )
-
-    env: Environment = Field(
-        default=Environment.DEVELOPMENT,
-        description="Deployment environment.",
-    )
-    log_level: str = Field(
-        default="INFO",
-        description="Logging level.",
-    )
-    secret_key: str = Field(
-        default="replace-this-before-production",
-        description="Secret key for future signing or auth-related features.",
-    )
-
-    host: str = Field(
-        default="0.0.0.0",
-        description="API bind address.",
-    )
-    port: int = Field(
-        default=8000,
-        description="API bind port.",
-    )
-    cors_origins: list[str] = Field(
-        default=["http://localhost:3000", "http://localhost:8000"],
-        description="Allowed CORS origins.",
-    )
-
-    use_inmemory_storage: bool = Field(
-        default=True,
-        description="Use lightweight in-memory telemetry storage for the default launch path.",
-    )
-    storage_backend: StorageBackend = Field(
-        default=StorageBackend.INFLUXDB,
-        description="Persistent storage backend used only when in-memory mode is disabled.",
-    )
-
-    influxdb_url: str = Field(
-        default="http://localhost:8086",
-        alias="INFLUXDB_URL",
-        description="InfluxDB 2.x connection URL.",
-    )
-    influxdb_token: str = Field(
-        default="replace-with-real-token",
-        alias="INFLUXDB_TOKEN",
-        description="InfluxDB authentication token.",
-    )
-    influxdb_org: str = Field(
-        default="gridos",
-        alias="INFLUXDB_ORG",
-        description="InfluxDB organization.",
-    )
-    influxdb_bucket: str = Field(
-        default="telemetry",
-        alias="INFLUXDB_BUCKET",
-        description="InfluxDB bucket for telemetry data.",
-    )
-
-    timescaledb_dsn: str = Field(
-        default="postgresql://gridos:gridos@localhost:5432/gridos",
-        alias="TIMESCALEDB_DSN",
-        description="TimescaleDB connection string.",
-    )
-
-
-settings = Settings()
+    return {
+        "status": "dispatched" if success else "failed",
+        "device_id": device_id,
+        "command_id": str(command.command_id),
+        "mode": command.mode.value,
+        "setpoint_kw": command.setpoint_kw,
+    }
