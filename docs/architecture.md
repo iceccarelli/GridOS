@@ -1,128 +1,79 @@
 # GridOS Architecture
 
-## Overview
+GridOS is currently best understood as a **lightweight platform for DER telemetry, local-first storage, digital-twin experimentation, and simplified scheduling workflows**.
 
-GridOS is a **vendor-neutral, open-source middleware platform** for managing Distributed Energy Resources (DERs) through a unified, standards-based architecture. It bridges the gap between heterogeneous field devices and enterprise energy management systems.
+This document describes the **current reduced architecture**, not the full long-term vision. The goal is to explain the working core clearly and honestly.
 
-## System Architecture
+## Architectural Intent
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        GridOS Platform                          │
-│                                                                 │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐   │
-│  │  REST API │  │WebSocket │  │  gRPC    │  │  Dashboard   │   │
-│  │ (FastAPI) │  │ Manager  │  │ (future) │  │  (future)    │   │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └──────┬───────┘   │
-│       │              │              │               │           │
-│  ┌────┴──────────────┴──────────────┴───────────────┴──────┐   │
-│  │                    Service Layer                         │   │
-│  │  ┌─────────┐  ┌──────────┐  ┌───────────┐  ┌────────┐  │   │
-│  │  │ Digital  │  │   ML     │  │Optimiser  │  │Security│  │   │
-│  │  │  Twin    │  │ Engine   │  │(MILP)     │  │ (Auth) │  │   │
-│  │  └────┬────┘  └────┬─────┘  └─────┬─────┘  └────────┘  │   │
-│  └───────┼─────────────┼──────────────┼────────────────────┘   │
-│          │             │              │                         │
-│  ┌───────┴─────────────┴──────────────┴────────────────────┐   │
-│  │                    Data Layer                            │   │
-│  │  ┌──────────┐  ┌────────────┐  ┌───────────────────┐    │   │
-│  │  │ InfluxDB │  │TimescaleDB │  │ Edge SQLite Cache │    │   │
-│  │  └──────────┘  └────────────┘  └───────────────────┘    │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                  Adapter Layer                           │   │
-│  │  ┌────────┐ ┌──────┐ ┌──────┐ ┌─────────┐ ┌────────┐   │   │
-│  │  │ Modbus │ │ MQTT │ │ DNP3 │ │IEC 61850│ │ OPC-UA │   │   │
-│  │  └────┬───┘ └──┬───┘ └──┬───┘ └────┬────┘ └───┬────┘   │   │
-│  └───────┼────────┼────────┼──────────┼──────────┼─────────┘   │
-└──────────┼────────┼────────┼──────────┼──────────┼─────────────┘
-           │        │        │          │          │
-    ┌──────┴──┐ ┌───┴──┐ ┌──┴───┐ ┌────┴───┐ ┌───┴────┐
-    │Inverters│ │ MQTT  │ │ RTU  │ │  IEDs  │ │  PLCs  │
-    │ Meters  │ │Sensors│ │      │ │        │ │        │
-    └─────────┘ └──────┘ └──────┘ └────────┘ └────────┘
+The present version of GridOS is designed around a small number of cooperating layers:
+
+1. A FastAPI service that exposes the application.
+2. A telemetry path that accepts structured DER-style data.
+3. A local-friendly persistence and cache path.
+4. A digital-twin layer for simulation and experimentation.
+5. A small analytical layer for forecasting and scheduling workflows.
+
+## Reduced Architecture Overview
+
+```mermaid
+flowchart TB
+    A[Telemetry Inputs] --> B[FastAPI Layer]
+    B --> C[Data Models and Validation]
+    C --> D[Local Storage and Edge Cache]
+    C --> E[Digital Twin Engine]
+    E --> F[Forecasting and Analysis]
+    F --> G[Scheduling Logic]
+    D --> H[API Responses and Queries]
+    E --> H
+    F --> H
+    G --> H
 ```
 
-## Component Details
+This is the system users should evaluate today. It is intentionally smaller than the broader vision because the current launch priority is a platform that works end-to-end rather than one that advertises every future feature.
 
-### Adapter Layer
+## Core Layers
 
-The adapter layer provides protocol-specific communication with field devices. Each adapter inherits from `BaseAdapter` and implements:
+| Layer | Role |
+|---|---|
+| API Layer | Exposes the service and user-facing routes |
+| Model Layer | Validates and normalizes application data |
+| Storage Layer | Supports local persistence and cache-oriented workflows |
+| Digital Twin Layer | Supports simulation and experimentation |
+| Analysis Layer | Supports baseline forecasting and scheduling workflows |
 
-- `connect()` / `disconnect()` — lifecycle management
-- `read_telemetry()` — poll device for current readings
-- `write_command()` — send control commands to devices
+## Current Design Priorities
 
-Supported protocols: **Modbus TCP**, **MQTT**, **DNP3**, **IEC 61850**, **OPC-UA**.
+| Priority | Meaning |
+|---|---|
+| Local-first operation | The simplest useful runtime should work without unnecessary infrastructure |
+| Clear API behavior | The exposed endpoints should reflect the real supported product |
+| Small supported scope | The launch version should be easy to understand and trust |
+| Extensibility | Advanced features can return later from a stable base |
 
-### Data Layer
+## Components in the Repository
 
-GridOS supports pluggable storage backends for time-series data:
-
-- **InfluxDB 2.x** — optimised for high-throughput telemetry ingestion
-- **TimescaleDB** — PostgreSQL extension for SQL-based analytics
-- **SQLite (Edge)** — local store-and-forward cache for edge deployments
-
-### Digital Twin Engine
-
-The digital twin provides physics-based models for grid components:
-
-- **Bus** — electrical nodes with voltage tracking
-- **Line** — distribution line segments with impedance and loss calculation
-- **Transformer** — two-winding transformers with tap ratio
-- **Load** — constant-power and profile-based loads
-- **PV** — single-diode-equivalent solar model
-- **Battery** — first-order equivalent circuit with SoC tracking
-- **EV Charger** — Level 2 / DC fast charger with smart charging
-
-The engine uses a simplified **backward/forward sweep** power-flow solver for radial distribution networks.
-
-### Machine Learning
-
-- **LSTM Forecaster** — PyTorch-based stacked LSTM for load and solar forecasting
-- **Isolation Forest** — scikit-learn-based anomaly detection for telemetry
-
-### Optimisation
-
-The MILP scheduler uses PuLP to solve the optimal battery dispatch problem:
-
-- Minimises electricity import cost
-- Respects battery power and energy constraints
-- Prevents simultaneous charge/discharge
-- Supports time-of-use pricing
-
-### API Layer
-
-FastAPI-based REST API with:
-
-- Device management (CRUD)
-- Telemetry ingestion and querying
-- Control command dispatch
-- Forecast generation
-- Optimisation scheduling
-- WebSocket live telemetry streaming
-
-### Security
-
-- API key authentication
-- JWT bearer token support
-- Role-based access control (RBAC)
-
-## Deployment Options
-
-| Deployment | Description |
-|-----------|-------------|
-| **Development** | `uvicorn` with `--reload` |
-| **Docker** | Multi-container with Docker Compose |
-| **Kubernetes** | Helm chart with auto-scaling |
-| **Edge** | Lightweight SQLite-based with cloud sync |
+| Component Area | Current Position |
+|---|---|
+| FastAPI service | Core to the launch path |
+| Local storage and edge cache | Core to the launch path |
+| Digital twin engine | Core to the launch path |
+| Forecasting | Kept in a smaller, practical form |
+| Scheduling / optimization | Kept in a smaller, practical form |
+| Broad adapter ecosystem | Not part of the core launch promise |
+| External storage backends | Optional, not central |
+| WebSocket-heavy workflows | Not part of the core launch promise |
 
 ## Data Flow
 
-1. **Ingestion**: Adapters poll devices or receive MQTT messages
-2. **Storage**: Telemetry is written to InfluxDB/TimescaleDB
-3. **Broadcast**: WebSocket manager pushes live data to subscribers
-4. **Analysis**: ML models detect anomalies and generate forecasts
-5. **Optimisation**: MILP scheduler computes optimal dispatch
-6. **Control**: Dispatcher sends setpoints to devices via adapters
+A typical request flow in the current architecture is:
+
+1. A client submits telemetry or a query through the API.
+2. The data is validated against the core models.
+3. The platform stores or forwards the data through the local-first path.
+4. The digital-twin and analysis layers can consume that data for simulation or decision-support workflows.
+5. The API returns results through the supported interface.
+
+## Architectural Boundaries
+
+This document deliberately does not present GridOS as a full autonomous operating system for all DER environments. It is a strong foundation for smart-grid prototyping and local-first experimentation, and that is the right level of promise for the current release.
