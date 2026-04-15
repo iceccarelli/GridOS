@@ -23,7 +23,7 @@ The project is being narrowed so that the public surface matches what new users 
 
 ## What This Version Does **Not** Promise Yet
 
-GridOS is **not** currently presented as a complete production-grade DER middleware platform. The repository still contains broader ideas and experimental modules, but they should not be interpreted as launch-ready product guarantees.
+GridOS is **not** currently presented as a complete production-grade DER middleware platform. The repository still contains broader ideas and experimental modules.
 
 | Capability | Current position |
 |---|---|
