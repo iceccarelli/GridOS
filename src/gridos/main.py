@@ -1,10 +1,4 @@
-"""GridOS FastAPI application entry point for the reduced launch path.
-
-The supported default surface is intentionally small and truthful:
-root metadata, health checks, interactive documentation, device registration,
-telemetry ingestion and query, control command acceptance, and optional
-WebSocket telemetry streaming.
-"""
+"""GridOS FastAPI application entry point for the reduced launch path."""
 
 from __future__ import annotations
 
@@ -25,29 +19,25 @@ from gridos.config import settings
 logger = logging.getLogger("gridos")
 
 
-SUPPORTED_ROUTE_GROUPS = {
-    "devices": "/api/v1/devices",
-    "telemetry": "/api/v1/telemetry",
-    "control": "/api/v1/control",
-    "docs": "/docs",
-    "health": "/health",
-    "websocket": "/ws/telemetry",
-}
+def _storage_mode() -> str:
+    """Return the effective storage mode advertised by the current runtime."""
+    use_inmemory = os.getenv("GRIDOS_USE_INMEMORY_STORAGE", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    return "inmemory" if use_inmemory else settings.storage_backend.value
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Configure logging and close shared resources on shutdown."""
+    """Application lifespan with lightweight startup and shutdown hooks."""
     logging.basicConfig(
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
         format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
     )
-    logger.info(
-        "GridOS v%s starting (env=%s, storage=%s)",
-        __version__,
-        settings.env.value,
-        settings.storage_backend.value,
-    )
+    logger.info("GridOS v%s starting (env=%s, storage=%s)", __version__, settings.env.value, _storage_mode())
     yield
     await close_storage()
     logger.info("GridOS shutdown complete")
@@ -56,8 +46,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="GridOS",
     description=(
-        "Lightweight API for device registration, telemetry ingestion, and "
-        "basic control workflows in a local-first GridOS deployment."
+        "Lightweight FastAPI service for DER device registration, telemetry ingestion, "
+        "telemetry queries, and basic control workflows."
     ),
     version=__version__,
     lifespan=lifespan,
@@ -84,7 +74,7 @@ async def websocket_telemetry(
     websocket: WebSocket,
     device_ids: str | None = None,
 ) -> None:
-    """Optional WebSocket endpoint for live telemetry streaming."""
+    """Provide a lightweight WebSocket stream for live telemetry updates."""
     ids: list[str] | None = None
     if device_ids:
         ids = [device_id.strip() for device_id in device_ids.split(",") if device_id.strip()]
@@ -92,43 +82,36 @@ async def websocket_telemetry(
     await ws_manager.connect(websocket, device_ids=ids)
     try:
         while True:
-            await websocket.receive_text()
+            _ = await websocket.receive_text()
     except WebSocketDisconnect:
         ws_manager.disconnect(websocket)
 
 
 @app.get("/health", tags=["System"])
-async def health_check() -> dict[str, object]:
-    """Return service health and supported runtime surface."""
+async def health_check() -> dict[str, str | int]:
+    """Return a small health payload for first-run verification."""
     return {
         "status": "healthy",
         "version": __version__,
         "environment": settings.env.value,
-        "storage_backend": settings.storage_backend.value,
+        "storage_backend": _storage_mode(),
         "websocket_connections": ws_manager.active_connections,
-        "supported_routes": SUPPORTED_ROUTE_GROUPS,
     }
 
 
 @app.get("/", tags=["System"])
-async def root() -> dict[str, object]:
-    """Return public metadata for the reduced launch version."""
+async def root() -> dict[str, str | dict[str, str]]:
+    """Return the supported reduced-launch service surface."""
     return {
         "name": "GridOS",
         "version": __version__,
         "mode": "reduced_launch",
-        "description": "Local-first DER telemetry and basic control API.",
-        "supported_features": [
-            "device registration",
-            "telemetry ingestion",
-            "telemetry history and latest lookup",
-            "basic control command acceptance",
-            "optional telemetry websocket",
-        ],
-        "unsupported_by_default": [
-            "forecasting",
-            "optimization",
-            "protocol-specific adapter automation",
-        ],
-        "routes": SUPPORTED_ROUTE_GROUPS,
+        "docs": "/docs",
+        "health": "/health",
+        "routes": {
+            "devices": "/api/v1/devices",
+            "telemetry": "/api/v1/telemetry",
+            "control": "/api/v1/control",
+            "docs": "/docs",
+        },
     }
