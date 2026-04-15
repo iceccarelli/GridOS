@@ -1,83 +1,104 @@
-"""
-Tests for the GridOS FastAPI application.
-"""
+"""API tests for the reduced GridOS launch path."""
 
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 
 from gridos.main import app
 
 
-@pytest.fixture
-def client():
-    """Create a test client for the FastAPI app."""
-    return TestClient(app)
+class TestSystemEndpoints:
+    """Validate the public service surface that must work on first run."""
 
+    def test_root(self) -> None:
+        with TestClient(app) as client:
+            response = client.get("/")
 
-class TestHealthEndpoints:
-    """Tests for system endpoints."""
-
-    def test_root(self, client):
-        resp = client.get("/")
-        assert resp.status_code == 200
-        data = resp.json()
+        assert response.status_code == 200
+        data = response.json()
         assert data["name"] == "GridOS"
+        assert data["docs"] == "/docs"
+        assert data["telemetry"] == "/api/v1/telemetry"
 
-    def test_health(self, client):
-        resp = client.get("/health")
-        assert resp.status_code == 200
-        data = resp.json()
+    def test_health(self) -> None:
+        with TestClient(app) as client:
+            response = client.get("/health")
+
+        assert response.status_code == 200
+        data = response.json()
         assert data["status"] == "healthy"
+        assert data["storage_mode"] in {"inmemory", "influxdb", "timescaledb"}
+
+    def test_docs_available(self) -> None:
+        with TestClient(app) as client:
+            response = client.get("/docs")
+
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
 
 
-class TestDeviceRoutes:
-    """Tests for device management routes."""
+class TestTelemetryRoutes:
+    """Validate the supported telemetry ingestion and query workflow."""
 
-    def test_list_devices_empty(self, client):
-        resp = client.get("/api/v1/devices/")
-        assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+    def test_ingest_single_telemetry(self, sample_telemetry) -> None:
+        payload = sample_telemetry.model_dump(mode="json")
 
-    def test_register_and_get_device(self, client):
-        payload = {
-            "device": {
-                "device_id": "test-dev-001",
-                "name": "Test Device",
-                "der_type": "solar_pv",
-                "rated_power_kw": 10.0,
-            },
-            "adapter_config": {"protocol": "modbus", "host": "192.168.1.100"},
+        with TestClient(app) as client:
+            response = client.post("/api/v1/telemetry/", json=payload)
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["status"] == "ingested"
+        assert data["device_id"] == sample_telemetry.device_id
+
+    def test_ingest_batch_and_query_history(self, sample_telemetry_batch) -> None:
+        batch_payload = {
+            "readings": [reading.model_dump(mode="json") for reading in sample_telemetry_batch]
         }
-        resp = client.post("/api/v1/devices/register", json=payload)
-        assert resp.status_code == 201
 
-        resp = client.get("/api/v1/devices/test-dev-001")
-        assert resp.status_code == 200
-        assert resp.json()["device_id"] == "test-dev-001"
+        with TestClient(app) as client:
+            ingest_response = client.post("/api/v1/telemetry/batch", json=batch_payload)
+            history_response = client.get(f"/api/v1/telemetry/{sample_telemetry_batch[0].device_id}")
 
-    def test_get_nonexistent_device(self, client):
-        resp = client.get("/api/v1/devices/nonexistent")
-        assert resp.status_code == 404
+        assert ingest_response.status_code == 201
+        ingest_data = ingest_response.json()
+        assert ingest_data["status"] == "ingested"
+        assert ingest_data["count"] == 2
 
+        assert history_response.status_code == 200
+        history = history_response.json()
+        assert len(history) >= 2
+        assert history[0]["device_id"] == sample_telemetry_batch[0].device_id
 
-class TestControlRoutes:
-    """Tests for control command routes."""
-
-    def test_send_command_no_device(self, client):
-        payload = {
-            "device_id": "nonexistent",
-            "mode": "power_setpoint",
-            "setpoint_kw": 10.0,
+    def test_get_latest_telemetry(self, sample_telemetry_batch) -> None:
+        batch_payload = {
+            "readings": [reading.model_dump(mode="json") for reading in sample_telemetry_batch]
         }
-        resp = client.post("/api/v1/control/nonexistent", json=payload)
-        assert resp.status_code == 404
+        device_id = sample_telemetry_batch[0].device_id
 
+        with TestClient(app) as client:
+            client.post("/api/v1/telemetry/batch", json=batch_payload)
+            response = client.get(f"/api/v1/telemetry/{device_id}/latest")
 
-class TestOptimizationRoutes:
-    """Tests for optimisation routes."""
+        assert response.status_code == 200
+        latest = response.json()
+        assert latest["device_id"] == device_id
+        assert latest["power_kw"] == sample_telemetry_batch[-1].power_kw
 
-    def test_get_schedule_empty(self, client):
-        resp = client.get("/api/v1/optimization/schedule")
-        assert resp.status_code == 404
+    def test_latest_telemetry_missing_device(self) -> None:
+        with TestClient(app) as client:
+            response = client.get("/api/v1/telemetry/missing-device/latest")
+
+        assert response.status_code == 404
+
+    def test_invalid_time_window_returns_400(self) -> None:
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/v1/telemetry/test-pv-001",
+                params={
+                    "start": "2026-01-02T00:00:00Z",
+                    "end": "2026-01-01T00:00:00Z",
+                },
+            )
+
+        assert response.status_code == 400
