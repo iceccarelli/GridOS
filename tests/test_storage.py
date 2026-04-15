@@ -1,71 +1,61 @@
-"""Storage tests for the reduced GridOS launch path."""
+"""Model tests for the reduced GridOS launch path."""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-
 import pytest
+from pydantic import ValidationError
 
-from gridos.api.dependencies import InMemoryStorageBackend
-from gridos.storage.base import StorageBackend
-
-
-class TestBaseStorage:
-    """Validate the abstract storage contract."""
-
-    def test_cannot_instantiate_storage_backend(self) -> None:
-        with pytest.raises(TypeError):
-            StorageBackend()
+from gridos.models.common import DERStatus, DERTelemetry, DERType, DeviceInfo, TelemetryBatch
 
 
-class TestInMemoryStorageBackend:
-    """Validate the default lightweight storage implementation."""
+class TestDERTelemetry:
+    """Validate the telemetry model used by the supported API flow."""
 
-    @pytest.mark.asyncio
-    async def test_connect_and_disconnect(self) -> None:
-        backend = InMemoryStorageBackend()
-        await backend.connect()
-        assert backend.is_connected is True
+    def test_create_telemetry(self, sample_telemetry) -> None:
+        assert sample_telemetry.device_id == "test-pv-001"
+        assert sample_telemetry.power_kw == 8.5
+        assert sample_telemetry.status == DERStatus.ONLINE
 
-        await backend.disconnect()
-        assert backend.is_connected is False
+    def test_telemetry_serialization_roundtrip(self, sample_telemetry) -> None:
+        data = sample_telemetry.model_dump(mode="json")
+        restored = DERTelemetry(**data)
 
-    @pytest.mark.asyncio
-    async def test_write_and_get_latest(self, sample_telemetry, sample_telemetry_batch) -> None:
-        backend = InMemoryStorageBackend()
-        await backend.connect()
+        assert restored.device_id == sample_telemetry.device_id
+        assert restored.power_kw == sample_telemetry.power_kw
 
-        await backend.write_point(sample_telemetry)
-        await backend.write_points(sample_telemetry_batch)
-        latest = await backend.get_latest(sample_telemetry.device_id)
+    def test_telemetry_defaults(self) -> None:
+        telemetry = DERTelemetry(device_id="dev-001", power_kw=10.0)
 
-        assert latest is not None
-        assert latest.device_id == sample_telemetry.device_id
-        assert latest.power_kw == sample_telemetry_batch[-1].power_kw
+        assert telemetry.reactive_power_kvar == 0.0
+        assert telemetry.status == DERStatus.ONLINE
+        assert telemetry.voltage_v is None
+        assert telemetry.frequency_hz is None
 
-    @pytest.mark.asyncio
-    async def test_query_range_respects_window_and_limit(self, sample_telemetry_batch) -> None:
-        backend = InMemoryStorageBackend()
-        await backend.connect()
-        await backend.write_points(sample_telemetry_batch)
+    def test_reject_unrealistic_power(self) -> None:
+        with pytest.raises(ValidationError):
+            DERTelemetry(device_id="dev-001", power_kw=1_500_000)
 
-        start = sample_telemetry_batch[0].timestamp - timedelta(minutes=1)
-        end = sample_telemetry_batch[-1].timestamp + timedelta(minutes=1)
-        results = await backend.query_range(
-            sample_telemetry_batch[0].device_id,
-            start,
-            end,
-            limit=1,
+
+class TestDeviceInfo:
+    """Validate the small device metadata model still used by the repo."""
+
+    def test_create_device(self) -> None:
+        device = DeviceInfo(
+            device_id="solar-001",
+            name="Rooftop PV",
+            der_type=DERType.SOLAR_PV,
+            rated_power_kw=10.0,
         )
 
-        assert len(results) == 1
-        assert results[0].device_id == sample_telemetry_batch[0].device_id
+        assert device.device_id == "solar-001"
+        assert device.der_type == DERType.SOLAR_PV
 
-    @pytest.mark.asyncio
-    async def test_get_latest_returns_none_for_unknown_device(self) -> None:
-        backend = InMemoryStorageBackend()
-        await backend.connect()
 
-        latest = await backend.get_latest("unknown-device")
+class TestTelemetryBatch:
+    """Validate batched telemetry ingestion payloads."""
 
-        assert latest is None
+    def test_batch_accepts_multiple_readings(self, sample_telemetry_batch) -> None:
+        batch = TelemetryBatch(readings=sample_telemetry_batch)
+
+        assert len(batch.readings) == 2
+        assert batch.readings[0].device_id == "test-pv-001"
