@@ -1,64 +1,64 @@
 # GridOS Data Models
 
-GridOS uses Pydantic v2 models to define a **Common Information Model (CIM)** for Distributed Energy Resources. All data exchanged through the API and between internal components uses these strongly-typed models.
+GridOS uses Pydantic models to describe the core data structures exchanged through the API and across internal components. For the current lightweight release, the most important thing to understand is not standards breadth but the **small set of models that support the main end-to-end workflow**.
 
-## Core Enumerations
+## Model Philosophy
 
-| Enum | Values | Description |
-|------|--------|-------------|
-| `DERType` | solar, wind, battery, ev_charger, generator, load, microgrid, other | Type of DER device |
-| `DERStatus` | online, offline, fault, maintenance, curtailed | Device operational status |
-| `ControlMode` | power_setpoint, voltage_regulation, frequency_response, schedule, emergency_stop, idle | Control command mode |
+The current model layer is intended to do three things well:
 
-## DERTelemetry
+| Goal | Meaning |
+|---|---|
+| Validation | Incoming data should be checked before it is used |
+| Consistency | Internal components should work from predictable structures |
+| Extensibility | The model set can grow later without making the initial release confusing |
 
-The primary telemetry model for real-time device readings.
+## Core Models
 
-| Field | Type | Unit | Default | Description |
-|-------|------|------|---------|-------------|
-| `device_id` | str | — | required | Unique device identifier |
-| `timestamp` | datetime | UTC | now | Reading timestamp |
-| `power_kw` | float | kW | required | Active power output |
-| `reactive_power_kvar` | float | kVAR | 0.0 | Reactive power |
-| `voltage_v` | float | V | 230.0 | Terminal voltage |
-| `current_a` | float | A | 0.0 | Current |
-| `frequency_hz` | float | Hz | 50.0 | Grid frequency |
-| `status` | DERStatus | — | online | Device status |
-| `soc` | float | % | None | State of charge (batteries) |
-| `temperature_c` | float | C | None | Device temperature |
-| `metadata` | dict | — | {} | Additional key-value pairs |
+### `DERTelemetry`
 
-## DeviceInfo
+This is the primary model for telemetry ingestion and observation data.
 
-Static device registration information.
+| Field | Meaning |
+|---|---|
+| `device_id` | Unique identifier for the source device |
+| `timestamp` | Time of the reading |
+| `power_kw` | Active power value |
+| `reactive_power_kvar` | Reactive power value |
+| `voltage_v` | Voltage reading |
+| `current_a` | Current reading |
+| `frequency_hz` | Frequency reading |
+| `status` | Operational status |
+| `soc` | Optional state-of-charge field |
+| `temperature_c` | Optional temperature field |
+| `metadata` | Optional structured extra values |
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `device_id` | str | Unique identifier |
-| `name` | str | Human-readable name |
-| `device_type` | DERType | Type of device |
-| `rated_power_kw` | float | Nameplate capacity |
-| `location` | dict | Geographic coordinates |
-| `firmware_version` | str | Firmware version |
-| `manufacturer` | str | Manufacturer name |
-| `model` | str | Model identifier |
-| `commissioned_at` | datetime | Commissioning date |
+### `DeviceInfo`
 
-## ControlCommand
+This model represents static or semi-static information about a device.
 
-Command model for device control operations.
+| Field | Meaning |
+|---|---|
+| `device_id` | Unique identifier |
+| `name` | Human-readable name |
+| `device_type` | Device classification |
+| `rated_power_kw` | Nominal power rating |
+| `location` | Optional location metadata |
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `command_id` | str | Auto-generated UUID |
-| `device_id` | str | Target device |
-| `mode` | ControlMode | Control mode |
-| `setpoint_kw` | float | Power setpoint |
-| `duration_seconds` | int | Command duration |
-| `priority` | int | Priority (1=highest) |
-| `source` | str | Command source |
-| `issued_at` | datetime | Issue timestamp |
+### `ControlCommand`
 
-## IEC 61850 Models
+If the current launch path includes command handling, this model represents a requested action sent to a device or simulated asset.
 
-GridOS includes IEC 61850 logical node models for standards-compliant data exchange. See `src/gridos/models/iec61850.py` for MMXU (measurement), CSWI (switch control), and DRCC (DER controller) models.
+| Field | Meaning |
+|---|---|
+| `command_id` | Unique command identifier |
+| `device_id` | Target device |
+| `mode` | Requested control mode |
+| `setpoint_kw` | Requested power setpoint |
+| `duration_seconds` | Requested duration |
+| `priority` | Relative execution priority |
+| `source` | Origin of the command |
+| `issued_at` | Command timestamp |
+
+## Scope Note
+
+The repository may contain additional standards-inspired or protocol-specific models, but the current launch documentation should stay centered on the models that support the reduced end-to-end workflow. Advanced standards-specific sections can be restored later once the public product scope expands again.
