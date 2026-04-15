@@ -1,120 +1,109 @@
 """
 WebSocket connection manager for GridOS.
 
-Manages WebSocket connections for live telemetry streaming.  Clients
-can subscribe to specific device IDs or receive all telemetry.
+The reduced launch path keeps WebSocket support intentionally small. Clients can
+subscribe to one or more device IDs, or connect without filters to receive all
+published telemetry events.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+from collections import defaultdict
 from typing import Any
 
 from fastapi import WebSocket
+
+from gridos.models.common import DERTelemetry
 
 logger = logging.getLogger(__name__)
 
 
 class WebSocketManager:
-    """Manages WebSocket connections and broadcasts telemetry.
-
-    Supports per-device subscriptions and broadcast-to-all.
-    """
+    """Manage live telemetry subscribers for the lightweight launch path."""
 
     def __init__(self) -> None:
-        # All active connections
-        self._connections: list[WebSocket] = []
-        # device_id → set of subscribed connections
-        self._subscriptions: dict[str, set[WebSocket]] = {}
+        self._connections: set[WebSocket] = set()
+        self._subscriptions: dict[str, set[WebSocket]] = defaultdict(set)
 
     async def connect(
-        self, websocket: WebSocket, device_ids: list[str] | None = None
+        self,
+        websocket: WebSocket,
+        device_ids: list[str] | None = None,
     ) -> None:
-        """Accept a WebSocket connection and register subscriptions.
-
-        Parameters
-        ----------
-        websocket:
-            The WebSocket connection to accept.
-        device_ids:
-            Optional list of device IDs to subscribe to.  If ``None``,
-            the client receives all telemetry.
-        """
+        """Accept a WebSocket connection and optionally subscribe it to devices."""
         await websocket.accept()
-        self._connections.append(websocket)
+        self._connections.add(websocket)
 
         if device_ids:
-            for did in device_ids:
-                if did not in self._subscriptions:
-                    self._subscriptions[did] = set()
-                self._subscriptions[did].add(websocket)
+            for device_id in {device_id.strip() for device_id in device_ids if device_id.strip()}:
+                self._subscriptions[device_id].add(websocket)
 
         logger.info(
-            "WebSocket connected (total=%d, subscriptions=%s)",
+            "WebSocket connected: total=%d, subscribed_devices=%s",
             len(self._connections),
-            device_ids or "all",
+            sorted({device_id for device_id, sockets in self._subscriptions.items() if websocket in sockets}) or "all",
         )
 
     def disconnect(self, websocket: WebSocket) -> None:
-        """Remove a WebSocket connection."""
-        if websocket in self._connections:
-            self._connections.remove(websocket)
+        """Remove a WebSocket connection from all tracking structures."""
+        self._connections.discard(websocket)
 
-        for _did, subs in self._subscriptions.items():
-            subs.discard(websocket)
+        empty_keys: list[str] = []
+        for device_id, sockets in self._subscriptions.items():
+            sockets.discard(websocket)
+            if not sockets:
+                empty_keys.append(device_id)
 
-        logger.info("WebSocket disconnected (total=%d)", len(self._connections))
+        for device_id in empty_keys:
+            del self._subscriptions[device_id]
+
+        logger.info("WebSocket disconnected: total=%d", len(self._connections))
+
+    async def publish_telemetry(self, telemetry: DERTelemetry) -> None:
+        """Publish a telemetry event to matching subscribers and broadcast clients."""
+        payload = {
+            "type": "telemetry",
+            "device_id": telemetry.device_id,
+            "data": telemetry.model_dump(mode="json"),
+        }
+        await self._send_payload(payload, device_id=telemetry.device_id)
 
     async def broadcast(self, message: dict[str, Any]) -> None:
-        """Broadcast a message to all connected clients."""
-        payload = json.dumps(message, default=str)
+        """Broadcast a message to all active WebSocket clients."""
+        await self._send_payload(message)
+
+    async def send_to_device_subscribers(self, device_id: str, message: dict[str, Any]) -> None:
+        """Backwards-compatible helper for device-targeted messages."""
+        await self._send_payload(message, device_id=device_id)
+
+    async def _send_payload(self, payload: dict[str, Any], device_id: str | None = None) -> None:
+        message = json.dumps(payload, default=str)
         disconnected: list[WebSocket] = []
 
-        for ws in self._connections:
+        if device_id is None:
+            targets = set(self._connections)
+        else:
+            explicitly_subscribed = set(self._subscriptions.get(device_id, set()))
+            any_subscription = set().union(*self._subscriptions.values()) if self._subscriptions else set()
+            broadcast_clients = self._connections - any_subscription
+            targets = explicitly_subscribed | broadcast_clients
+
+        for websocket in targets:
             try:
-                await ws.send_text(payload)
-            except Exception:
-                disconnected.append(ws)
+                await websocket.send_text(message)
+            except Exception as exc:
+                logger.warning("WebSocket send failed: %s", exc)
+                disconnected.append(websocket)
 
-        for ws in disconnected:
-            self.disconnect(ws)
-
-    async def send_to_device_subscribers(
-        self, device_id: str, message: dict[str, Any]
-    ) -> None:
-        """Send a message to clients subscribed to a specific device.
-
-        Also sends to clients with no subscriptions (broadcast clients).
-        """
-        payload = json.dumps(message, default=str)
-        disconnected: list[WebSocket] = []
-
-        # Subscribers for this device
-        targets = self._subscriptions.get(device_id, set())
-
-        # Also include clients with no specific subscriptions
-        subscribed_ws = set()
-        for subs in self._subscriptions.values():
-            subscribed_ws.update(subs)
-        broadcast_clients = set(self._connections) - subscribed_ws
-
-        all_targets = targets | broadcast_clients
-
-        for ws in all_targets:
-            try:
-                await ws.send_text(payload)
-            except Exception:
-                disconnected.append(ws)
-
-        for ws in disconnected:
-            self.disconnect(ws)
+        for websocket in disconnected:
+            self.disconnect(websocket)
 
     @property
     def active_connections(self) -> int:
-        """Number of active WebSocket connections."""
+        """Return the number of active WebSocket connections."""
         return len(self._connections)
 
 
-# Singleton instance
 ws_manager = WebSocketManager()
