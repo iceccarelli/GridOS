@@ -1,88 +1,101 @@
-# GridOS Protocol Adapters
+# GridOS Quick Start
 
-GridOS provides a pluggable adapter framework for communicating with field devices using industry-standard protocols. Each adapter inherits from `BaseAdapter` and implements a consistent async interface.
+This guide is the **fastest reliable path** to running GridOS locally.
 
-## Supported Protocols
+GridOS is currently focused on a **small, local-first workflow**: start the API, open the docs, send telemetry, and use the platform as a foundation for digital-twin and scheduling experiments. The goal of this quick start is not to show every planned feature. The goal is to get you to a working system quickly and honestly.
 
-| Protocol | Module | Status | Use Case |
-|----------|--------|--------|----------|
-| Modbus TCP | `adapters.modbus` | Production | Inverters, meters, PLCs |
-| MQTT | `adapters.mqtt` | Production | IoT sensors, cloud gateways |
-| DNP3 | `adapters.dnp3` | Stub | SCADA, utility RTUs |
-| IEC 61850 | `adapters.iec61850` | Stub | Substation IEDs |
-| OPC-UA | `adapters.opcua` | Production | Industrial PLCs, SCADA |
+## What This Quick Start Covers
 
-## Base Adapter Interface
+| Step | Outcome |
+|---|---|
+| Install GridOS from source | Local development setup is ready |
+| Start the API | Core backend runs |
+| Open `/docs` | API is discoverable |
+| Send one telemetry payload | Main data path is working |
+| Verify health | Runtime is alive |
 
-All adapters implement the following async methods:
+## 1. Clone the Repository
 
-```python
-class BaseAdapter(ABC):
-    async def connect(self) -> None: ...
-    async def disconnect(self) -> None: ...
-    async def read_telemetry(self) -> DERTelemetry: ...
-    async def write_command(self, command: ControlCommand) -> bool: ...
-    async def health_check(self) -> bool: ...
+```bash
+git clone https://github.com/iceccarelli/GridOS.git
+cd GridOS
 ```
 
-## Modbus TCP Adapter
+## 2. Create a Virtual Environment
 
-The Modbus adapter communicates with devices using the Modbus TCP protocol via the `pymodbus` library.
-
-### Configuration
-
-```python
-from gridos.adapters.modbus import ModbusAdapter
-
-adapter = ModbusAdapter(
-    device_id="inverter-001",
-    host="192.168.1.100",
-    port=502,
-    unit_id=1,
-    register_map={
-        "power_kw": {"address": 40001, "count": 2, "scale": 0.1},
-        "voltage_v": {"address": 40003, "count": 1, "scale": 0.1},
-        "current_a": {"address": 40004, "count": 1, "scale": 0.01},
-    },
-)
+```bash
+python -m venv .venv
+source .venv/bin/activate
 ```
 
-## MQTT Adapter
+## 3. Install the Project
 
-The MQTT adapter subscribes to device topics and publishes control commands.
-
-### Configuration
-
-```python
-from gridos.adapters.mqtt import MQTTAdapter
-
-adapter = MQTTAdapter(
-    device_id="sensor-001",
-    broker_host="mqtt.example.com",
-    broker_port=1883,
-    topic_telemetry="gridos/devices/sensor-001/telemetry",
-    topic_command="gridos/devices/sensor-001/command",
-)
+```bash
+pip install -e ".[dev]"
 ```
 
-## Creating a Custom Adapter
+If you are working on a minimal local setup, start with the default installation first and only add optional integrations after the base runtime is working.
 
-To add support for a new protocol:
+## 4. Create a Local Configuration File
 
-1. Create a new file in `src/gridos/adapters/`
-2. Inherit from `BaseAdapter`
-3. Implement all abstract methods
-4. Add tests in `tests/test_adapters.py`
-
-```python
-from gridos.adapters.base import BaseAdapter
-
-class MyProtocolAdapter(BaseAdapter):
-    async def connect(self) -> None:
-        # Establish connection
-        ...
-
-    async def read_telemetry(self) -> DERTelemetry:
-        # Read and return telemetry
-        ...
+```bash
+cp .env.example .env
 ```
+
+Use the default local settings first. Do not add external database or protocol configuration unless you actually need it.
+
+## 5. Start the API
+
+```bash
+uvicorn gridos.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Once the server starts, open:
+
+```text
+http://localhost:8000/docs
+```
+
+## 6. Check the Health Endpoint
+
+```bash
+curl http://localhost:8000/health
+```
+
+A successful response confirms that the local runtime is alive.
+
+## 7. Send a Telemetry Payload
+
+Use the interactive API docs at `/docs`, or send a request directly.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/telemetry/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "device_id": "demo-device-1",
+    "timestamp": "2026-01-01T12:00:00Z",
+    "power_kw": 12.5,
+    "reactive_power_kvar": 1.8,
+    "voltage_v": 230.0,
+    "current_a": 10.4,
+    "frequency_hz": 50.0,
+    "status": "online"
+  }'
+```
+
+The exact payload should always follow the schema shown in the running API documentation.
+
+## 8. Next Steps
+
+Once the core path is working, the most useful next steps are:
+
+| Next Step | Why it matters |
+|---|---|
+| Explore `/docs` | Understand the currently supported API surface |
+| Review `docs/architecture.md` | Understand the reduced-scope system design |
+| Review `docs/models.md` | Understand the main data structures |
+| Run selected demos or notebooks | Explore the digital-twin and scheduling direction |
+
+## What This Guide Deliberately Does Not Promise Yet
+
+This quick start does not assume that advanced protocol adapters, external databases, WebSocket workflows, or larger deployment modes are part of the default first-run path. Those areas may still exist in the repository, but the current launch path is intentionally smaller so the base system is easier to trust and easier to run.
