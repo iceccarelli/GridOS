@@ -1,66 +1,114 @@
-# GridOS Architecture
+# GridOS Deployment Guide
 
-GridOS is currently best understood as a **small FastAPI service for DER device registration, telemetry handling, and basic control workflows**.
+This document describes the **supported deployment story for the reduced GridOS release**.
 
-This document describes the **actual reduced architecture that the repository is intended to support today**. It does not describe the larger future vision as if it were already delivered.
+The recommended path is deliberately simple: run the API as a single Python service with **in-memory storage enabled by default**. Optional Docker support is provided for convenience, but the primary objective is a deployment path that is easy to reproduce and honest about what the repository supports today.
 
-## Architectural Intent
+## Supported Deployment Modes
 
-The current architecture is designed around a narrow, reliable launch path:
+| Deployment mode | Status |
+|---|---|
+| Local development with `uvicorn` | Recommended |
+| Single-container Docker deployment | Supported |
+| Docker Compose with one API service | Supported |
+| External time-series database integration | Optional |
+| Kubernetes and large-scale orchestration | Not part of the current launch path |
 
-1. A FastAPI application exposes the public API.
-2. Pydantic models validate device, telemetry, and control payloads.
-3. A local in-memory storage backend supports first-run operation with no external services.
-4. Optional storage backends can be enabled later for persistence.
-5. The API returns honest responses about what it accepted, stored, or could not dispatch.
+## Prerequisites
 
-## Reduced Architecture Overview
+| Requirement | Notes |
+|---|---|
+| Python 3.11+ | Required |
+| Virtual environment | Strongly recommended |
+| Docker | Optional |
 
-```mermaid
-flowchart TB
-    A[Client or Local Integrator] --> B[FastAPI Application]
-    B --> C[Device Routes]
-    B --> D[Telemetry Routes]
-    B --> E[Control Routes]
-    C --> F[Pydantic Models]
-    D --> F
-    E --> F
-    F --> G[In-Memory Storage Default]
-    F --> H[Optional InfluxDB Backend]
-    F --> I[Optional TimescaleDB Backend]
-    D --> J[Optional Telemetry WebSocket Stream]
+## Default Local Deployment
+
+### 1. Clone and enter the repository
+
+```bash
+git clone https://github.com/iceccarelli/GridOS.git
+cd GridOS
 ```
 
-## Core Layers
+### 2. Create a virtual environment
 
-| Layer | Role in the current launch path |
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Install the project
+
+```bash
+pip install -e ".[dev]"
+```
+
+### 4. Create the environment file
+
+```bash
+cp .env.example .env
+```
+
+Keep `GRIDOS_USE_INMEMORY_STORAGE=true` unless you are intentionally testing an external backend.
+
+### 5. Run the API
+
+```bash
+uvicorn gridos.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### 6. Verify the deployment
+
+```bash
+curl http://localhost:8000/health
+```
+
+Then open:
+
+```text
+http://localhost:8000/docs
+```
+
+## Docker Deployment
+
+Build and run a single API container:
+
+```bash
+docker build -t gridos:local .
+docker run --rm -p 8000:8000 --env-file .env gridos:local
+```
+
+Or use Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+The compose file intentionally starts only the API service. It does not claim a full multi-service production stack.
+
+## Configuration Philosophy
+
+| Configuration area | Current recommendation |
 |---|---|
-| API layer | Exposes the supported HTTP and WebSocket surface |
-| Model layer | Validates and normalizes request and response data |
-| Storage layer | Provides the default in-memory data path and optional persistent backends |
-| Device registry | Keeps local device metadata for supported workflows |
-| Control handling | Accepts commands and reports whether dispatch actually occurred |
+| Storage | Start with in-memory mode |
+| Auth | Keep it explicit and minimal |
+| External databases | Add only when you need them |
+| Protocol integrations | Treat them as optional and incomplete |
+| Production hardening | Add after the local launch path is stable |
 
-## Current Supported Surface
+## Optional External Storage
 
-| Area | Status |
-|---|---|
-| Device registration and lookup | Supported |
-| Telemetry ingestion and history queries | Supported |
-| Latest telemetry lookup | Supported |
-| Basic control command acceptance | Supported |
-| WebSocket telemetry stream | Optional |
-| Forecasting routes | Excluded from the default launch path |
-| Optimization routes | Excluded from the default launch path |
-| Digital twin engine | Deferred |
-| Broad protocol adapter automation | Deferred |
+GridOS can be pointed at **InfluxDB** or **TimescaleDB**, but those integrations are secondary. They should be treated as extensions to a working local deployment, not as part of the required first-run path.
 
-## Data Flow
+To enable an external backend, first set:
 
-A typical supported flow is straightforward.
+```bash
+GRIDOS_USE_INMEMORY_STORAGE=false
+```
 
-First, a client registers a device. Next, the client sends telemetry for that device. The application validates the payload and stores it in the in-memory backend by default. The same data can then be retrieved through history or latest-value queries. Control commands can also be submitted, and the API responds honestly if no live adapter is attached.
+Then provide the matching backend configuration in `.env`.
 
-## Architectural Boundaries
+## What This Guide Does Not Promise
 
-This repository should not currently be presented as a full operating system for every DER environment. It is a **working local-first telemetry and control foundation**. That smaller claim is the correct one for the present release.
+This guide does not claim that the current repository provides a fully validated adapter ecosystem, digital twin engine, production observability platform, or orchestration stack. The present goal is a **small, reproducible deployment path that works end-to-end**.
