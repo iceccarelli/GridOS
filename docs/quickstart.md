@@ -1,18 +1,19 @@
 # GridOS Quick Start
 
-This guide is the **fastest reliable path** to running GridOS locally.
+This guide shows the fastest honest path to a working **GridOS** setup.
 
-GridOS is currently focused on a **small, local-first workflow**: start the API, open the docs, send telemetry, and use the platform as a foundation for digital-twin and scheduling experiments. The goal of this quick start is not to show every planned feature. The goal is to get you to a working system quickly and honestly.
+The current launch-ready version is intentionally small. The supported first-run path is a **FastAPI service** with **device registration**, **telemetry ingestion and lookup**, **basic control command acceptance**, and **in-memory storage by default**. Optional external storage backends can be added later, but they are not required for a successful first run.
 
 ## What This Quick Start Covers
 
 | Step | Outcome |
 |---|---|
-| Install GridOS from source | Local development setup is ready |
-| Start the API | Core backend runs |
-| Open `/docs` | API is discoverable |
-| Send one telemetry payload | Main data path is working |
-| Verify health | Runtime is alive |
+| Install GridOS from source | Local environment is ready |
+| Start the API | The supported backend is running |
+| Open `/docs` | The live API surface is visible |
+| Register one device | The device registry works |
+| Send telemetry | The core ingest path works |
+| Query latest telemetry | End-to-end data flow is confirmed |
 
 ## 1. Clone the Repository
 
@@ -21,7 +22,7 @@ git clone https://github.com/iceccarelli/GridOS.git
 cd GridOS
 ```
 
-## 2. Create a Virtual Environment
+## 2. Create and Activate a Virtual Environment
 
 ```bash
 python -m venv .venv
@@ -34,7 +35,7 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-If you are working on a minimal local setup, start with the default installation first and only add optional integrations after the base runtime is working.
+This installs the reduced launch runtime plus the development tools used by the repository.
 
 ## 4. Create a Local Configuration File
 
@@ -42,7 +43,7 @@ If you are working on a minimal local setup, start with the default installation
 cp .env.example .env
 ```
 
-Use the default local settings first. Do not add external database or protocol configuration unless you actually need it.
+Leave `GRIDOS_USE_INMEMORY_STORAGE=true` for the first run. That is the supported launch path.
 
 ## 5. Start the API
 
@@ -50,7 +51,7 @@ Use the default local settings first. Do not add external database or protocol c
 uvicorn gridos.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Once the server starts, open:
+Then open:
 
 ```text
 http://localhost:8000/docs
@@ -62,16 +63,26 @@ http://localhost:8000/docs
 curl http://localhost:8000/health
 ```
 
-A successful response confirms that the local runtime is alive.
+A successful response confirms that the local runtime is running.
 
-## 7. Send a Telemetry Payload
-
-Use the interactive API docs at `/docs`, or send a request directly.
+## 7. Register a Device
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/telemetry/ \
-  -H "Content-Type: application/json" \
-  -d '{
+curl -X POST http://localhost:8000/api/v1/devices/register   -H "Content-Type: application/json"   -d '{
+    "device": {
+      "device_id": "demo-device-1",
+      "name": "Demo PV",
+      "der_type": "solar_pv",
+      "rated_power_kw": 12.5
+    },
+    "adapter_config": {}
+  }'
+```
+
+## 8. Send a Telemetry Payload
+
+```bash
+curl -X POST http://localhost:8000/api/v1/telemetry/   -H "Content-Type: application/json"   -d '{
     "device_id": "demo-device-1",
     "timestamp": "2026-01-01T12:00:00Z",
     "power_kw": 12.5,
@@ -83,19 +94,23 @@ curl -X POST http://localhost:8000/api/v1/telemetry/ \
   }'
 ```
 
-The exact payload should always follow the schema shown in the running API documentation.
+## 9. Query the Latest Telemetry
 
-## 8. Next Steps
+```bash
+curl http://localhost:8000/api/v1/telemetry/demo-device-1/latest
+```
 
-Once the core path is working, the most useful next steps are:
+## Current Scope Boundaries
 
-| Next Step | Why it matters |
+| Area | Current Status |
 |---|---|
-| Explore `/docs` | Understand the currently supported API surface |
-| Review `docs/architecture.md` | Understand the reduced-scope system design |
-| Review `docs/models.md` | Understand the main data structures |
-| Run selected demos or notebooks | Explore the digital-twin and scheduling direction |
+| Device registration | Supported |
+| Telemetry ingest and query | Supported |
+| Basic control command acceptance | Supported |
+| In-memory storage | Supported by default |
+| InfluxDB and TimescaleDB | Optional, not required for first run |
+| Forecasting and optimization | Not part of the default launch path |
+| Protocol adapter automation | Deferred |
+| Digital twin workflows | Deferred |
 
-## What This Guide Deliberately Does Not Promise Yet
-
-This quick start does not assume that advanced protocol adapters, external databases, WebSocket workflows, or larger deployment modes are part of the default first-run path. Those areas may still exist in the repository, but the current launch path is intentionally smaller so the base system is easier to trust and easier to run.
+The goal of this guide is not to promise the long-term vision. The goal is to get you to a **small, working, trustworthy** GridOS instance quickly.
