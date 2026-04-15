@@ -1,9 +1,9 @@
-"""
-FastAPI dependency wiring for GridOS.
+"""FastAPI dependency wiring for the reduced GridOS launch path.
 
-This reduced launch version introduces a small in-memory telemetry backend so the
-repository can run end-to-end without requiring external infrastructure. InfluxDB
-and TimescaleDB remain available when explicitly configured.
+The default runtime is deliberately local-first. An in-memory telemetry backend
+and an in-memory device registry are always available without external
+infrastructure. InfluxDB and TimescaleDB remain optional integrations that are
+only activated when explicitly requested.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ _device_registry: dict[str, dict[str, Any]] = {}
 
 
 class InMemoryStorageBackend(StorageBackend):
-    """Small in-memory storage backend for local development and demos."""
+    """Small, dependency-free storage backend for development and launch use."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -45,10 +45,13 @@ class InMemoryStorageBackend(StorageBackend):
         self._data.clear()
 
     async def write_point(self, telemetry: DERTelemetry) -> None:
-        self._data[telemetry.device_id].append(telemetry)
-        self._data[telemetry.device_id].sort(key=lambda item: _normalized_ts(item.timestamp))
+        self._require_connection()
+        bucket = self._data[telemetry.device_id]
+        bucket.append(telemetry)
+        bucket.sort(key=lambda item: _normalized_ts(item.timestamp))
 
     async def write_points(self, telemetry_list: list[DERTelemetry]) -> None:
+        self._require_connection()
         for telemetry in telemetry_list:
             await self.write_point(telemetry)
 
@@ -59,93 +62,145 @@ class InMemoryStorageBackend(StorageBackend):
         end: datetime,
         limit: int = 10_000,
     ) -> list[DERTelemetry]:
+        self._require_connection()
         normalized_start = _normalized_ts(start)
         normalized_end = _normalized_ts(end)
-        results = [
+        readings = [
             item
             for item in self._data.get(device_id, [])
             if normalized_start <= _normalized_ts(item.timestamp) <= normalized_end
         ]
-        return results[:limit]
+        return readings[:limit]
 
     async def get_latest(self, device_id: str) -> DERTelemetry | None:
-        items = self._data.get(device_id, [])
-        if not items:
+        self._require_connection()
+        readings = self._data.get(device_id, [])
+        if not readings:
             return None
-        return max(items, key=lambda item: _normalized_ts(item.timestamp))
+        return max(readings, key=lambda item: _normalized_ts(item.timestamp))
 
 
 def _normalized_ts(value: datetime) -> datetime:
+    """Normalize timestamps so naive and UTC-aware values can be compared safely."""
     if value.tzinfo is None:
         return value
     return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _use_inmemory_storage() -> bool:
-    return os.getenv("GRIDOS_USE_INMEMORY_STORAGE", "true").lower() in {"1", "true", "yes", "on"}
+    """Return whether the launch-safe in-memory backend should be used."""
+    if _env_flag("GRIDOS_USE_INMEMORY_STORAGE", True):
+        return True
+    selected_backend = getattr(settings.storage_backend, "value", str(settings.storage_backend))
+    return selected_backend not in {"influxdb", "timescaledb"}
+
+
+def _selected_backend_name() -> str:
+    return getattr(settings.storage_backend, "value", str(settings.storage_backend))
+
+
+async def _build_external_backend() -> StorageBackend:
+    """Instantiate the explicitly requested external storage backend."""
+    backend_name = _selected_backend_name()
+
+    if backend_name == "influxdb":
+        from gridos.storage.influxdb import InfluxDBBackend
+
+        return InfluxDBBackend(
+            {
+                "url": settings.influxdb_url,
+                "token": settings.influxdb_token,
+                "org": settings.influxdb_org,
+                "bucket": settings.influxdb_bucket,
+            }
+        )
+
+    if backend_name == "timescaledb":
+        from gridos.storage.timescaledb import TimescaleDBBackend
+
+        return TimescaleDBBackend({"dsn": settings.timescaledb_dsn})
+
+    raise ValueError(
+        f"Unsupported storage backend '{backend_name}'. Use inmemory, influxdb, or timescaledb."
+    )
 
 
 async def get_storage() -> StorageBackend:
-    """Return the configured storage backend singleton."""
+    """Return the shared storage backend instance for the current process."""
     global _storage_backend
+
     if _storage_backend is not None and _storage_backend.is_connected:
         return _storage_backend
 
+    backend: StorageBackend
     if _use_inmemory_storage():
-        _storage_backend = InMemoryStorageBackend()
-    elif settings.storage_backend.value == "influxdb":
-        from gridos.storage.influxdb import InfluxDBBackend
-
-        _storage_backend = InfluxDBBackend()
+        backend = InMemoryStorageBackend()
     else:
-        from gridos.storage.timescaledb import TimescaleDBBackend
+        backend = await _build_external_backend()
 
-        _storage_backend = TimescaleDBBackend()
-
-    try:
-        await _storage_backend.connect()
-    except Exception as exc:
-        logger.error("Storage backend connection failed: %s", exc)
-        raise
-
-    return _storage_backend
+    await backend.connect()
+    _storage_backend = backend
+    logger.info("GridOS storage backend ready: %s", backend.backend_name)
+    return backend
 
 
 async def close_storage() -> None:
-    """Disconnect the active storage backend."""
+    """Disconnect and clear the shared storage backend instance."""
     global _storage_backend
-    if _storage_backend is not None:
-        await _storage_backend.disconnect()
-        _storage_backend = None
+
+    if _storage_backend is None:
+        return
+
+    await _storage_backend.disconnect()
+    _storage_backend = None
 
 
 def get_adapter_registry() -> dict[str, BaseAdapter]:
-    """Return the adapter registry."""
+    """Return the adapter registry used by the control route."""
     return _adapter_registry
 
 
 def register_adapter(device_id: str, adapter: BaseAdapter) -> None:
-    """Register an adapter for a device."""
+    """Attach an adapter instance to a registered device."""
     _adapter_registry[device_id] = adapter
     logger.info("Adapter registered for device %s", device_id)
 
 
 def unregister_adapter(device_id: str) -> None:
-    """Remove an adapter from the registry."""
+    """Remove an adapter instance from the registry if one exists."""
     _adapter_registry.pop(device_id, None)
 
 
 def get_device_registry() -> dict[str, dict[str, Any]]:
-    """Return the in-memory device registry."""
+    """Return the simple in-memory device registry."""
     return _device_registry
 
 
 def register_device(device_id: str, info: dict[str, Any]) -> None:
-    """Register a device in the in-memory registry."""
+    """Store one device record in the in-memory registry."""
     _device_registry[device_id] = info
     logger.info("Device registered: %s", device_id)
 
 
+def unregister_device(device_id: str) -> None:
+    """Remove a device and any attached adapter from the local registries."""
+    _device_registry.pop(device_id, None)
+    unregister_adapter(device_id)
+
+
+def reset_registries() -> None:
+    """Clear in-memory registries, mainly for tests and local resets."""
+    _device_registry.clear()
+    _adapter_registry.clear()
+
+
 def get_settings() -> Settings:
-    """Return the application settings."""
+    """Return the application settings singleton."""
     return settings
