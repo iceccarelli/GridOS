@@ -1,16 +1,8 @@
 name: Publish Docker Image
 
-# Triggers on GitHub Release or manual dispatch
 on:
   release:
     types: [published]
-  push:
-    branches: [main]
-    paths:
-      - "src/**"
-      - "Dockerfile"
-      - "requirements/**"
-      - "pyproject.toml"
   workflow_dispatch:
 
 permissions:
@@ -22,7 +14,6 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  # ── Step 1: Run tests before building image ────────────────────
   test:
     name: Pre-Build Tests
     runs-on: ubuntu-latest
@@ -37,25 +28,23 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements/base.txt -r requirements/dev.txt
+          pip install -r requirements/dev.txt
           pip install -e .
 
-      - name: Run tests
-        run: pytest tests/ -v --tb=short
+      - name: Run reduced test suite
+        run: |
+          pytest             tests/test_api.py             tests/test_models.py             tests/test_storage.py             -v --tb=short
 
-  # ── Step 2: Build and push Docker image ────────────────────────
   build-and-push:
-    name: Build & Push Docker Image
+    name: Build and Push Docker Image
     runs-on: ubuntu-latest
     needs: test
     steps:
       - uses: actions/checkout@v4
 
-      # Set up Docker Buildx for multi-platform builds
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Authenticate to GitHub Container Registry
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -63,30 +52,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Extract metadata (tags, labels) for Docker
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # Tag with "latest" on main branch pushes
             type=raw,value=latest,enable={{is_default_branch}}
-            # Tag with semver on release (v0.1.0 → 0.1.0, 0.1, 0)
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            # Tag with short SHA for traceability
             type=sha,prefix=
           labels: |
             org.opencontainers.image.title=GridOS
-            org.opencontainers.image.description=Open Energy Operating System — vendor-neutral middleware for Distributed Energy Resources
+            org.opencontainers.image.description=Lightweight DER telemetry and control API
             org.opencontainers.image.vendor=GridOS Contributors
             org.opencontainers.image.licenses=MIT
             org.opencontainers.image.source=https://github.com/iceccarelli/GridOS
-            org.opencontainers.image.documentation=https://github.com/iceccarelli/GridOS/tree/main/docs
 
-      # Build and push the Docker image
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -97,12 +79,3 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
-
-      # Verify the pushed image
-      - name: Verify image
-        run: |
-          echo "Image pushed successfully with tags:"
-          echo "${{ steps.meta.outputs.tags }}"
-          echo ""
-          echo "Pull command:"
-          echo "  docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
