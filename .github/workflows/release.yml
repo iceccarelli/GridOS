@@ -1,6 +1,5 @@
 name: GridOS Release
 
-# Triggered when a version tag is pushed (e.g., v0.1.0)
 on:
   push:
     tags:
@@ -10,7 +9,6 @@ permissions:
   contents: write
 
 jobs:
-  # ── Create GitHub Release with auto-generated notes ────────────
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
@@ -30,7 +28,7 @@ jobs:
       - name: Build distribution packages
         run: python -m build
 
-      - name: Create GitHub Release
+      - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
@@ -38,25 +36,19 @@ jobs:
           body: |
             ## GridOS ${{ github.ref_name }}
 
-            ### Installation
+            This release is for the reduced GridOS launch path: a lightweight API for device registration, telemetry ingestion, telemetry lookup, and basic control workflows.
 
-            **Via pip (PyPI):**
-            ```bash
-            pip install gridos
-            ```
+            ### Install from source
 
-            **Via Docker:**
-            ```bash
-            docker pull ghcr.io/iceccarelli/gridos:latest
-            docker run -p 8000:8000 ghcr.io/iceccarelli/gridos:latest
-            ```
-
-            **From source:**
             ```bash
             git clone https://github.com/iceccarelli/GridOS.git
             cd GridOS
             pip install -e ".[dev]"
             ```
 
-            ---
-            *See [CHANGELOG.md](https://github.com/iceccarelli/GridOS/blob/main/CHANGELOG.md) for full details.*
+            ### Run locally
+
+            ```bash
+            cp .env.example .env
+            uvicorn gridos.main:app --host 0.0.0.0 --port 8000 --reload
+            ```
