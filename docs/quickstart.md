@@ -1,103 +1,101 @@
-# GridOS Quick Start Guide
+# GridOS Quick Start
 
-This guide will help you get GridOS running in under 5 minutes.
+This guide is the **fastest reliable path** to running GridOS locally.
 
-## Installation
+GridOS is currently focused on a **small, local-first workflow**: start the API, open the docs, send telemetry, and use the platform as a foundation for digital-twin and scheduling experiments. The goal of this quick start is not to show every planned feature. The goal is to get you to a working system quickly and honestly.
 
-### Option 1: pip install (recommended for development)
+## What This Quick Start Covers
+
+| Step | Outcome |
+|---|---|
+| Install GridOS from source | Local development setup is ready |
+| Start the API | Core backend runs |
+| Open `/docs` | API is discoverable |
+| Send one telemetry payload | Main data path is working |
+| Verify health | Runtime is alive |
+
+## 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/GridOS.git
+git clone https://github.com/iceccarelli/GridOS.git
 cd GridOS
+```
+
+## 2. Create a Virtual Environment
+
+```bash
 python -m venv .venv
 source .venv/bin/activate
+```
+
+## 3. Install the Project
+
+```bash
 pip install -e ".[dev]"
 ```
 
-### Option 2: Docker (recommended for deployment)
+If you are working on a minimal local setup, start with the default installation first and only add optional integrations after the base runtime is working.
+
+## 4. Create a Local Configuration File
 
 ```bash
-git clone https://github.com/your-org/GridOS.git
-cd GridOS
-docker-compose up --build -d
+cp .env.example .env
 ```
 
-## Running the API
+Use the default local settings first. Do not add external database or protocol configuration unless you actually need it.
+
+## 5. Start the API
 
 ```bash
-# Development mode with auto-reload
 uvicorn gridos.main:app --host 0.0.0.0 --port 8000 --reload
-
-# Or use the Makefile
-make run
 ```
 
-Visit [http://localhost:8000/docs](http://localhost:8000/docs) for the interactive Swagger UI.
+Once the server starts, open:
 
-## Running the Demo
+```text
+http://localhost:8000/docs
+```
 
-The quick start demo showcases all major GridOS features:
+## 6. Check the Health Endpoint
 
 ```bash
-make demo
-# Or directly:
-PYTHONPATH=src python notebooks/01_quickstart.py
+curl http://localhost:8000/health
 ```
 
-## Register a Device
+A successful response confirms that the local runtime is alive.
 
-```bash
-curl -X POST http://localhost:8000/api/v1/devices/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "device": {
-      "device_id": "solar-001",
-      "name": "Rooftop PV",
-      "device_type": "solar",
-      "rated_power_kw": 10.0
-    },
-    "adapter_config": {
-      "protocol": "mqtt",
-      "broker": "mqtt://localhost:1883"
-    }
-  }'
-```
+## 7. Send a Telemetry Payload
 
-## Ingest Telemetry
+Use the interactive API docs at `/docs`, or send a request directly.
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/telemetry/ \
   -H "Content-Type: application/json" \
   -d '{
-    "device_id": "solar-001",
-    "power_kw": 8.5,
-    "voltage_v": 235.0,
+    "device_id": "demo-device-1",
+    "timestamp": "2026-01-01T12:00:00Z",
+    "power_kw": 12.5,
+    "reactive_power_kvar": 1.8,
+    "voltage_v": 230.0,
+    "current_a": 10.4,
+    "frequency_hz": 50.0,
     "status": "online"
   }'
 ```
 
-## Run Optimisation
+The exact payload should always follow the schema shown in the running API documentation.
 
-```bash
-curl -X POST http://localhost:8000/api/v1/optimization/run \
-  -H "Content-Type: application/json" \
-  -d '{
-    "load_forecast_kw": [60, 58, 55, 52, 50, 48, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 30, 31, 33, 36, 40, 45, 50, 55, 60, 65, 68, 70, 72, 74, 75, 76, 77, 78, 79, 80, 80, 79, 78, 76, 74, 72, 70, 68, 66, 64, 62, 60, 58, 56, 55, 54, 53, 52, 51, 50, 50, 51, 53, 56, 60, 65, 70, 75, 78, 80, 82, 83, 84, 85, 84, 82, 80, 77, 74, 70, 66, 62, 58, 55, 52, 50, 48, 46, 45, 44, 43, 42, 41],
-    "solar_forecast_kw": [0, 0, 0, 0, 0, 0, 0, 0, 2, 5, 10, 15, 20, 25, 30, 35, 38, 40, 42, 44, 45, 46, 47, 48, 48, 48, 47, 46, 45, 44, 42, 40, 38, 36, 34, 32, 30, 28, 25, 22, 18, 14, 10, 6, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 5, 10, 15, 20, 25, 30, 35, 38, 40, 42, 44, 45, 46, 47, 48, 48, 48, 47, 46, 45, 44, 42, 40, 38, 36, 34, 32, 30, 28, 25, 22, 18, 14, 10, 6, 3, 1],
-    "battery_capacity_kwh": 200,
-    "battery_max_charge_kw": 100,
-    "battery_max_discharge_kw": 100
-  }'
-```
+## 8. Next Steps
 
-## Running Tests
+Once the core path is working, the most useful next steps are:
 
-```bash
-make test
-# Or directly:
-pytest tests/ -v --cov=gridos
-```
+| Next Step | Why it matters |
+|---|---|
+| Explore `/docs` | Understand the currently supported API surface |
+| Review `docs/architecture.md` | Understand the reduced-scope system design |
+| Review `docs/models.md` | Understand the main data structures |
+| Run selected demos or notebooks | Explore the digital-twin and scheduling direction |
 
-## Next Steps
+## What This Guide Deliberately Does Not Promise Yet
 
-Explore the full documentation in the `docs/` directory for architecture details, API reference, and deployment guides.
+This quick start does not assume that advanced protocol adapters, external databases, WebSocket workflows, or larger deployment modes are part of the default first-run path. Those areas may still exist in the repository, but the current launch path is intentionally smaller so the base system is easier to trust and easier to run.
