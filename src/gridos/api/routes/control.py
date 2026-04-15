@@ -1,15 +1,11 @@
-"""
-Control command API routes.
-
-Endpoints for issuing control commands to DER devices.
-"""
+"""Control API routes for the reduced GridOS launch path."""
 
 from __future__ import annotations
 
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, status
 
 from gridos.api.dependencies import get_adapter_registry, get_device_registry
 from gridos.models.common import ControlCommand
@@ -21,48 +17,49 @@ router = APIRouter(prefix="/control", tags=["Control"])
 @router.post(
     "/{device_id}",
     response_model=dict[str, Any],
-    summary="Send a control command to a device",
+    summary="Send a control command to a registered device",
 )
 async def send_command(device_id: str, command: ControlCommand) -> dict[str, Any]:
-    """Issue a control command to a specific DER device.
+    """Validate a command and dispatch it when an adapter is available.
 
-    The command is validated, logged, and forwarded to the device's
-    protocol adapter for execution.
+    In the reduced launch version, command handling is intentionally modest:
+    the device must exist, and if no adapter has been attached yet, the API
+    responds truthfully that the command was accepted but not dispatched.
     """
-    # Verify device exists
     registry = get_device_registry()
     if device_id not in registry:
-        raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Device '{device_id}' not found.",
+        )
 
-    # Ensure command targets the correct device
-    if command.device_id != device_id:
-        command.device_id = device_id
+    normalized_command = command.model_copy(update={"device_id": device_id})
 
-    # Find adapter
-    adapters = get_adapter_registry()
-    adapter = adapters.get(device_id)
-
+    adapter = get_adapter_registry().get(device_id)
     if adapter is None:
-        logger.warning("No adapter registered for device %s", device_id)
+        logger.info("Command accepted without adapter for device %s", device_id)
         return {
-            "status": "no_adapter",
+            "status": "accepted_not_dispatched",
             "device_id": device_id,
-            "command_id": str(command.command_id),
-            "message": "No adapter registered — command queued for later dispatch.",
+            "command_id": str(normalized_command.command_id),
+            "mode": normalized_command.mode.value,
+            "message": "No adapter is attached to this device in the reduced launch configuration.",
         }
 
     try:
-        success = await adapter.write_command(command)
+        dispatched = await adapter.write_command(normalized_command)
     except Exception as exc:
-        logger.error("Command dispatch error for %s: %s", device_id, exc)
+        logger.exception("Command dispatch failed for %s", device_id)
         raise HTTPException(
-            status_code=500, detail=f"Command dispatch failed: {exc}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Command dispatch failed.",
         ) from exc
 
     return {
-        "status": "dispatched" if success else "failed",
+        "status": "dispatched" if dispatched else "rejected",
         "device_id": device_id,
-        "command_id": str(command.command_id),
-        "mode": command.mode.value,
-        "setpoint_kw": command.setpoint_kw,
+        "command_id": str(normalized_command.command_id),
+        "mode": normalized_command.mode.value,
+        "setpoint_kw": normalized_command.setpoint_kw,
+        "soc_target_percent": normalized_command.soc_target_percent,
     }
