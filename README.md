@@ -7,7 +7,7 @@
 
 **GridOS** is a small FastAPI-based platform for **DER telemetry ingestion and grid-oriented experimentation**. The current goal is not to present a complete operating system for energy networks. The goal is to provide a repository that people can clone, run, understand, and extend without being forced into a large deployment or a long list of partially implemented integrations.
 
-At this stage, the most honest description of GridOS is a **working prototype with a deliberately reduced launch scope**. The supported first-run path is a local API, interactive documentation, telemetry ingestion, telemetry querying, health checks, and a simple storage mode that can run entirely in memory for development. Optional persistent backends remain in the codebase, but they are no longer the default promise.
+At this stage, the description of GridOS is a **working prototype with a deliberately reduced launch scope**. The supported first-run path is a local API, interactive documentation, telemetry ingestion, telemetry querying, health checks, and a simple storage mode that can run entirely in memory for development. Optional persistent backends remain in the codebase, but they are no longer the default promise.
 
 ## What This Version Intentionally Supports
 
