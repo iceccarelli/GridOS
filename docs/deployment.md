@@ -1,185 +1,106 @@
 # GridOS Deployment Guide
 
+This guide describes the **supported deployment path for the current lightweight version of GridOS**.
+
+At this stage, the recommended deployment model is a **local-first or single-service development deployment**. The priority is to keep the platform understandable, reproducible, and easy to run without requiring a large infrastructure setup.
+
+## Supported Deployment Approach
+
+| Deployment Mode | Status |
+|---|---|
+| Local development with `uvicorn` | **Recommended** |
+| Single-container Docker workflow | **Optional, only if validated in your environment** |
+| Multi-service Docker Compose stack | **Secondary / evolving** |
+| Kubernetes | **Not part of the current core launch path** |
+
 ## Prerequisites
 
-- Python 3.10 or later
-- Docker and Docker Compose (for containerised deployment)
-- Kubernetes cluster (for production deployment)
+| Requirement | Notes |
+|---|---|
+| Python 3.10+ | Required |
+| Virtual environment | Strongly recommended |
+| Docker | Optional |
 
-## Development Setup
+## Local Development Deployment
 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/GridOS.git
+git clone https://github.com/iceccarelli/GridOS.git
 cd GridOS
 ```
 
-### 2. Create Virtual Environment
+### 2. Create a Virtual Environment
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# .venv\Scripts\activate   # Windows
+source .venv/bin/activate
 ```
 
 ### 3. Install Dependencies
 
 ```bash
 pip install -e ".[dev]"
-# Or using requirements files:
-pip install -r requirements/base.txt -r requirements/dev.txt
 ```
 
-### 4. Configure Environment
+### 4. Create the Environment File
 
 ```bash
 cp .env.example .env
-# Edit .env with your settings
 ```
 
-### 5. Run the API Server
+Keep the configuration as local and minimal as possible for your first run.
+
+### 5. Run the API
 
 ```bash
 uvicorn gridos.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 6. Run Tests
-
-```bash
-pytest tests/ -v --cov=gridos
-```
-
-## Docker Deployment
-
-### Build and Run
-
-```bash
-docker-compose up --build -d
-```
-
-This starts:
-- **GridOS API** on port 8000
-- **InfluxDB** on port 8086
-- **TimescaleDB** on port 5432
-
-### View Logs
-
-```bash
-docker-compose logs -f gridos-api
-```
-
-### Stop Services
-
-```bash
-docker-compose down
-```
-
-## Kubernetes Deployment
-
-### 1. Build Docker Image
-
-```bash
-docker build -t gridos:latest .
-```
-
-### 2. Apply Kubernetes Manifests
-
-```bash
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/configmap.yaml
-kubectl apply -f k8s/deployment.yaml
-kubectl apply -f k8s/service.yaml
-kubectl apply -f k8s/hpa.yaml
-```
-
-### 3. Verify Deployment
-
-```bash
-kubectl get pods -n gridos
-kubectl get svc -n gridos
-```
-
-## Edge Deployment
-
-For resource-constrained edge devices:
-
-### 1. Install Minimal Dependencies
-
-```bash
-pip install -r requirements/base.txt
-```
-
-### 2. Configure Edge Mode
-
-```bash
-export GRIDOS_ENV=production
-export GRIDOS_STORAGE_BACKEND=timescaledb
-export GRIDOS_EDGE_MODE=true
-```
-
-### 3. Run with Edge Sync
-
-The edge deployment uses SQLite for local caching and periodically syncs to the cloud API:
-
-```python
-from gridos.edge.local_cache import LocalCache
-from gridos.edge.sync import EdgeSyncer
-
-cache = LocalCache(db_path="./edge_cache.db")
-syncer = EdgeSyncer(
-    cache=cache,
-    api_base_url="https://gridos-cloud.example.com",
-    sync_interval_seconds=60,
-)
-```
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `GRIDOS_ENV` | `development` | Environment (development/staging/production) |
-| `GRIDOS_LOG_LEVEL` | `INFO` | Logging level |
-| `GRIDOS_STORAGE_BACKEND` | `influxdb` | Storage backend (influxdb/timescaledb) |
-| `INFLUXDB_URL` | `http://localhost:8086` | InfluxDB connection URL |
-| `INFLUXDB_TOKEN` | — | InfluxDB authentication token |
-| `INFLUXDB_ORG` | `gridos` | InfluxDB organisation |
-| `INFLUXDB_BUCKET` | `telemetry` | InfluxDB bucket name |
-| `TIMESCALEDB_DSN` | `postgresql://...` | TimescaleDB connection string |
-| `GRIDOS_CORS_ORIGINS` | `["*"]` | Allowed CORS origins |
-| `GRIDOS_ML_MODEL_DIR` | `./models_cache` | ML model storage directory |
-
-## Health Checks
-
-The API exposes a health endpoint at `/health`:
+### 6. Verify the Deployment
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-Response:
+Then open:
 
-```json
-{
-  "status": "healthy",
-  "version": "0.1.0",
-  "environment": "development",
-  "websocket_connections": 0
-}
+```text
+http://localhost:8000/docs
 ```
 
-## Monitoring
+## Configuration Philosophy
 
-GridOS supports Prometheus metrics when `prometheus_client` is installed:
+The current recommended configuration is **local-first**. External services should only be introduced when the core application path is already working.
 
-```bash
-pip install prometheus_client
-```
+| Configuration Area | Current Recommendation |
+|---|---|
+| Storage | Prefer the default local-compatible path first |
+| Auth | Keep configuration explicit and simple |
+| External databases | Add only when needed |
+| Protocol integrations | Treat as optional or experimental |
+| Production hardening | Add after the local path is stable |
 
-Metrics are exposed at `/metrics` and include:
-- `gridos_telemetry_ingested_total`
-- `gridos_commands_dispatched_total`
-- `gridos_active_devices`
-- `gridos_websocket_connections`
-- `gridos_storage_write_seconds`
-- `gridos_optimization_runs_total`
+## Environment Variables
+
+The exact variables may evolve, but the goal of the `.env` file is to keep the initial deployment small and understandable. For the lightweight release, the most important principle is that the default local runtime should not depend on a large external stack.
+
+## Docker Notes
+
+Docker can still be useful, but it should be treated as a convenience layer rather than the primary supported path unless it has been revalidated.
+
+If you use Docker, keep the first target simple:
+
+| Docker Goal | Recommendation |
+|---|---|
+| Single service API container | Good near-term target |
+| Full multi-service stack | Only promote after revalidation |
+| External TSDB dependencies | Optional |
+
+## Edge and Offline-Friendly Operation
+
+GridOS is being shaped around local storage and cache-friendly workflows. That means edge-style usage should emphasize resilience and simple local behavior before more complex synchronization topologies are introduced.
+
+## What This Guide Does Not Cover Yet
+
+This guide does not present Kubernetes, full production autoscaling, or a mature observability stack as part of the current core launch path. Those areas may be revisited later, but they should not be treated as part of the main supported deployment story until the smaller base system is fully stable.
