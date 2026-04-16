@@ -1,68 +1,66 @@
 # GridOS
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/iceccarelli/GridOS/actions/workflows/ci.yml/badge.svg)](https://github.com/iceccarelli/GridOS/actions/workflows/ci.yml)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-teal.svg)](https://fastapi.tiangolo.com/)
 
-**GridOS** is a small FastAPI-based platform for **DER telemetry ingestion and grid-oriented experimentation**. The current goal is not to present a complete operating system for energy networks. The goal is to provide a repository that people can clone, run, understand, and extend without being forced into a large deployment or a long list of partially implemented integrations.
+**GridOS** is a lightweight FastAPI service for **DER device registration, telemetry ingestion, telemetry lookup, and basic control workflows**.
 
-At this stage, the description of GridOS is a **working prototype with a deliberately reduced launch scope**. The supported first-run path is a local API, interactive documentation, telemetry ingestion, telemetry querying, health checks, and a simple storage mode that can run entirely in memory for development. Optional persistent backends remain in the codebase, but they are no longer the default promise.
+The repository still contains broader experimental areas such as digital twin simulation, forecasting, and optimisation. Those modules remain available for contributors. The supported first-run experience is intentionally smaller so that a new user can clone the repository, start the API, send telemetry, and confirm a working result without being forced into a large deployment.
 
-## What This Version Intentionally Supports
-
-The project is being narrowed so that the public surface matches what new users can actually run successfully.
+## What The Current Release Supports
 
 | Area | Supported launch scope |
 |---|---|
-| **API service** | FastAPI application with `/`, `/health`, and `/docs` |
-| **Telemetry** | Ingest single and batch telemetry payloads and query telemetry history |
-| **Default storage mode** | In-memory storage for local development and demos |
-| **Optional persistence** | InfluxDB and TimescaleDB can still be configured explicitly |
-| **Developer experience** | Simple source install and a lightweight Docker path |
+| API service | FastAPI app with `/`, `/health`, `/docs`, device routes, telemetry routes, and control routes |
+| Telemetry | Single and batch ingestion, latest-value lookup, and bounded history queries |
+| Control | Command acceptance with honest adapter status reporting |
+| Default storage | In-memory mode for local development and demos |
+| Optional persistence | InfluxDB and TimescaleDB when configured explicitly |
+| Packaging | Editable install, reduced dependency groups, Docker image, and CI workflows |
 
-## What This Version Does **Not** Promise Yet
+## What Is Still Experimental
 
-GridOS is **not** currently presented as a complete production-grade DER middleware platform. The repository still contains broader ideas and experimental modules.
-
-| Capability | Current position |
+| Area | Current position |
 |---|---|
-| Broad protocol adapter support | Present in the repository, but not part of the launch-critical promise |
-| Advanced digital twin workflows | Experimental and not required for first use |
-| Advanced forecasting and optimization | Experimental and not required for first use |
-| Full external observability stack | Deferred |
-| Large multi-service deployment story | Deferred |
+| Protocol adapters | Present in the repository but not part of the launch-critical path |
+| Digital twin simulation | Experimental helper modules, not required for first use |
+| Forecasting | Optional module, not mounted in the default app |
+| Optimisation | Optional module, not mounted in the default app |
+| Large multi-service deployment | Deferred until the core local path stays stable |
 
 ## Why The Scope Is Smaller
 
-This smaller scope is intentional. It is better for GridOS to be **simple and reliable** than broad and inconsistent. The immediate objective is an end-to-end path that works when someone clones the repository for the first time. Once that path is stable, the project can expand again from a stronger base.
+This smaller scope is intentional. It is better for GridOS to be **simple, reliable, and truthful** than broad and internally inconsistent. The current work focuses on a dependable end-to-end path that works from a fresh clone. Experimental modules are still available for contributors, but the public launch story now matches what the repository can support immediately.
 
-## Architecture
-
-The current launch path is centered on a small execution flow.
+## Architecture At A Glance
 
 ```mermaid
 flowchart LR
     A[Client or Script] --> B[FastAPI Service]
-    B --> C[Telemetry Endpoints]
-    C --> D[In-Memory Storage by Default]
-    D --> E[Query and Health Checks]
-    C -. optional .-> F[InfluxDB]
-    C -. optional .-> G[TimescaleDB]
+    B --> C[Device Routes]
+    B --> D[Telemetry Routes]
+    B --> E[Control Routes]
+    D --> F[In-Memory Storage by Default]
+    F --> G[History and Latest Queries]
+    D -. optional .-> H[InfluxDB]
+    D -. optional .-> I[TimescaleDB]
+    J[Experimental Modules] -. not in default app .-> B
 ```
-
-This means the default experience does not depend on external infrastructure. Persistent storage remains available for later stages, but it is optional rather than mandatory for the first successful run.
 
 ## Repository Layout
 
 | Path | Role |
 |---|---|
-| `src/gridos/main.py` | FastAPI entry point |
-| `src/gridos/api/` | API routes and dependency wiring |
-| `src/gridos/storage/` | Storage interfaces and optional persistent backends |
-| `docs/` | Reduced-scope product and setup documentation |
-| `requirements/` | Lean dependency groups |
-| `tests/` | Regression checks for the supported path |
+| `src/gridos/main.py` | Active FastAPI entry point for the reduced launch path |
+| `src/gridos/api/` | API routes, dependency wiring, and WebSocket manager |
+| `src/gridos/models/` | Small Pydantic model surface for the supported workflow |
+| `src/gridos/storage/` | Storage interface plus optional persistent backends |
+| `src/gridos/digital_twin/` | Experimental simulation and ML helpers kept outside the default runtime path |
+| `docs/` | Documentation aligned to the current supported scope |
+| `requirements/` | Reduced dependency groups for base, dev, ml, and production |
+| `tests/` | Regression tests for the lightweight supported path |
 
 ## Quick Start
 
@@ -99,62 +97,47 @@ http://localhost:8000/docs
 
 ## Default Runtime Behavior
 
-The default `.env.example` enables **in-memory storage**. That makes the first run easier because no database is required just to validate the API and telemetry workflow.
-
-If you later want persistence, you can disable in-memory mode and point GridOS to one of the optional storage backends.
+The default `.env.example` enables **in-memory storage**. That means the first run does not require any external database.
 
 | Mode | Intended use |
 |---|---|
-| `GRIDOS_USE_INMEMORY_STORAGE=true` | Local development, demos, and first-run validation |
+| `GRIDOS_USE_INMEMORY_STORAGE=true` | Local development, demos, and validation |
 | `GRIDOS_USE_INMEMORY_STORAGE=false` + InfluxDB config | Explicit persistent backend setup |
 | `GRIDOS_USE_INMEMORY_STORAGE=false` + TimescaleDB config | Explicit persistent backend setup |
 
-## Example Telemetry Payload
-
-```json
-{
-  "device_id": "demo-device-1",
-  "timestamp": "2026-01-01T12:00:00Z",
-  "power_kw": 12.5,
-  "reactive_power_kvar": 1.8,
-  "status": "online"
-}
-```
-
-The exact accepted schema should always be confirmed through the running OpenAPI documentation at `/docs`.
-
-## Installation Philosophy
-
-GridOS now favors a **small default installation**. Heavy ML packages, adapter packages, and persistent storage drivers are no longer treated as part of the default requirement set.
+## Installation Targets
 
 | Install target | Command |
 |---|---|
 | Core development path | `pip install -e ".[dev]"` |
 | Add persistent storage drivers | `pip install -e ".[storage]"` |
-| Add adapters | `pip install -e ".[adapters]"` |
+| Add adapter extras | `pip install -e ".[adapters]"` |
 | Add ML extras | `pip install -e ".[ml]"` |
 
 ## Testing
 
-The most valuable tests for this phase are the ones that protect the smaller supported scope.
+Protect the supported scope first.
 
 ```bash
-pytest tests/ -v
+pytest tests/test_api.py tests/test_models.py tests/test_storage.py -v --tb=short
 ```
 
-In practice, this means protecting API startup, health checks, telemetry ingestion, telemetry queries, and the default storage path.
+## Documentation Guide
 
-## Documentation
+The most important docs for the current release are:
 
-The documentation under `docs/` has been reduced to match the smaller supported scope. It should be read as a practical guide to the current working product, not as a promise that every experimental module in the repository is launch-ready.
+| Document | Purpose |
+|---|---|
+| `docs/quickstart.md` | Get a working local instance running |
+| `docs/deployment.md` | Understand the supported deployment story |
+| `docs/api_reference.md` | Confirm the active and optional API surface |
+| `docs/models.md` | Understand the real model layer |
+| `docs/adapters.md` | See the adapter framework boundaries |
+| `docs/architecture.md` | See the reduced launch architecture |
 
 ## Contributing
 
-Contributions are welcome, especially when they improve clarity, testing, startup reliability, telemetry handling, and documentation consistency. The priority is to strengthen the default path before expanding the scope again.
-
-## Security
-
-If you discover a security issue, please follow the process described in `SECURITY.md`. Security improvements are especially valuable when they simplify configuration and reduce unsafe defaults.
+Contributions are welcome, especially when they improve startup reliability, telemetry handling, testing, packaging, and documentation consistency. The priority is to strengthen the lightweight path before expanding the public scope again.
 
 ## License
 
